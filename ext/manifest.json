@@ -1,0 +1,50 @@
+{
+  "manifest_version": 3,
+  "name": "Trainyard",
+  "version": "0.1.0",
+  "description": "One locomotive, many tracks. Switch context without losing your train of thought.",
+  "minimum_chrome_version": "116",
+
+  "permissions": ["sidePanel", "storage", "tabs", "alarms"],
+
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+
+  "action": {
+    "default_title": "Trainyard — open the yard",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+
+  "side_panel": {
+    "default_path": "sidepanel/index.html"
+  },
+
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+
+  "commands": {
+    "open-yard": {
+      "suggested_key": { "default": "Ctrl+Shift+Y", "mac": "Command+Shift+Y" },
+      "description": "Open the yard"
+    },
+    "quick-switch": {
+      "suggested_key": { "default": "Alt+Shift+S", "mac": "Alt+Shift+S" },
+      "description": "Switch tracks"
+    },
+    "quick-park": {
+      "suggested_key": { "default": "Alt+Shift+P", "mac": "Alt+Shift+P" },
+      "description": "Park the current track"
+    }
+  }
+}

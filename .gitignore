@@ -1,0 +1,9 @@
+node_modules/
+shots/
+*.zip
+.DS_Store
+
+# GSAP is vendored locally (MV3 forbids CDN scripts) but not committed.
+# See README → "Swapping in GSAP".
+ext/vendor/gsap.min.js
+ext/vendor/*Plugin.min.js

@@ -1,0 +1,1110 @@
+/* ==========================================================================
+   Trainyard — side panel
+   Visual direction: warm paper, printed ink, signal colour. Closer to a railway
+   timetable than a dashboard. Every rail is a rule under a line of type, which
+   is why the labels sit above their track rather than beside it.
+   ========================================================================== */
+
+:root {
+  --paper: #f2efe7;
+  --paper-2: #fbf9f4;
+  --paper-3: #e9e5da;
+  --edge: #ddd7c9;
+  --edge-soft: #e6e1d4;
+
+  --ink: #1a1814;
+  --ink-2: #5c564a;
+  --ink-3: #948d7c;
+
+  --rail: #a79e8a;
+  --rail-strong: #3c382f;
+  --sleeper: #d9d2c1;
+
+  --sig-clear: #3f9c62;
+  --sig-ready: #37b070;
+  --sig-caution: #cf9522;
+  --sig-auto: #4b8fd4;
+  --sig-danger: #c44a3c;
+  --sig-off: #b3ab98;
+
+  --accent: #a8412c; /* oxide red — rolling stock livery */
+  --accent-ink: #fff8f2;
+
+  --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  --font-note: ui-serif, 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+
+  --r: 7px;
+  --shadow: 0 1px 2px rgba(26, 24, 20, 0.06), 0 6px 20px -8px rgba(26, 24, 20, 0.18);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #131210;
+    --paper-2: #1b1a16;
+    --paper-3: #232019;
+    --edge: #2e2a24;
+    --edge-soft: #262219;
+
+    --ink: #efebe1;
+    --ink-2: #a49d8e;
+    --ink-3: #726b5e;
+
+    --rail: #4e493e;
+    --rail-strong: #d2cabb;
+    --sleeper: #2b2721;
+
+    --sig-clear: #4bbd7a;
+    --sig-ready: #5ed992;
+    --sig-caution: #e8b444;
+    --sig-auto: #74b1ec;
+    --sig-danger: #e0655a;
+    --sig-off: #5d5749;
+
+    --accent: #c4553c;
+    --accent-ink: #1a0f0b;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -10px rgba(0, 0, 0, 0.7);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* A class rule with `display` beats the UA sheet's [hidden]{display:none}, which
+   silently leaves hidden overlays on top of the page eating clicks. */
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/* --- top bar ------------------------------------------------------------ */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px 8px;
+  border-bottom: 1px solid var(--edge);
+  flex: 0 0 auto;
+}
+
+.wordmark {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  color: var(--ink-2);
+}
+
+.wordmark svg {
+  display: block;
+  overflow: visible;
+}
+
+.icon-btn {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-3);
+  border-radius: var(--r);
+  padding: 4px 6px;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.icon-btn:hover {
+  color: var(--ink);
+  background: var(--paper-3);
+}
+
+.icon-btn:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* --- NOW ---------------------------------------------------------------- */
+
+.now {
+  flex: 0 0 auto;
+  padding: 13px 14px 11px;
+  background: var(--paper-2);
+  border-bottom: 1px solid var(--edge);
+  position: relative;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.2em;
+  color: var(--ink-3);
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.eyebrow::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: repeating-linear-gradient(to right, var(--edge) 0 3px, transparent 3px 6px);
+}
+
+.now-name {
+  font-size: 19px;
+  font-weight: 620;
+  letter-spacing: -0.012em;
+  margin: 7px 0 0;
+  line-height: 1.15;
+  word-break: break-word;
+}
+
+.now-dest {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+  margin-top: 3px;
+}
+
+/* The stop is a note you wrote to yourself, so it is set like one. */
+.now-stop {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-family: var(--font-note);
+  font-size: 14.5px;
+  line-height: 1.4;
+  color: var(--ink);
+  background: transparent;
+  border: 1px dashed transparent;
+  border-radius: 5px;
+  margin: 8px -5px 0;
+  padding: 4px 5px;
+  cursor: text;
+  word-break: break-word;
+}
+
+.now-stop:hover {
+  border-color: var(--edge);
+  background: var(--paper);
+}
+
+.now-stop.is-empty {
+  color: var(--ink-3);
+  font-style: italic;
+}
+
+textarea.now-stop {
+  font-family: var(--font-note);
+  border-color: var(--accent);
+  background: var(--paper);
+  resize: none;
+  overflow: hidden;
+  min-height: 30px;
+}
+
+.now-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 11px;
+  flex-wrap: wrap;
+}
+
+.now-restore {
+  margin-top: 9px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-3);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+/* --- buttons ------------------------------------------------------------ */
+
+button {
+  font: inherit;
+}
+
+.btn {
+  appearance: none;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.03em;
+  padding: 5px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--edge);
+  background: var(--paper);
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: background 90ms ease, color 90ms ease, border-color 90ms ease, transform 60ms ease;
+}
+
+.btn:hover {
+  color: var(--ink);
+  border-color: var(--ink-3);
+}
+
+.btn:active {
+  transform: translateY(0.5px);
+}
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.btn-primary:hover {
+  color: var(--accent-ink);
+  filter: brightness(1.08);
+}
+
+.btn-quiet {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ink-3);
+}
+
+.btn-quiet:hover {
+  background: var(--paper-3);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* --- yard --------------------------------------------------------------- */
+
+.yard {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+  padding-bottom: 6px;
+}
+
+.rail-svg {
+  display: block;
+}
+
+.labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.lbl {
+  position: absolute;
+  pointer-events: auto;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  border-radius: 5px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  display: block;
+}
+
+.lbl:hover {
+  background: var(--paper-3);
+}
+
+.lbl-head {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+}
+
+.lbl-name {
+  font-size: 13px;
+  font-weight: 560;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.008em;
+}
+
+.lbl-status {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+/* Must be block: text-overflow:ellipsis has no effect on an inline box, so as a
+   span this silently ran the stop text out under the signals on narrow panels. */
+.lbl-stop {
+  display: block;
+  font-family: var(--font-note);
+  font-size: 11.5px;
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+}
+
+.lbl.is-active .lbl-name {
+  color: var(--ink);
+  font-weight: 640;
+}
+
+.lbl.is-ready .lbl-status {
+  color: var(--sig-ready);
+}
+
+.lbl.is-waiting .lbl-status {
+  color: var(--sig-caution);
+}
+
+.lbl.is-ai .lbl-status {
+  color: var(--sig-auto);
+}
+
+.lbl.is-blocked .lbl-status {
+  color: var(--sig-danger);
+}
+
+.depot-label {
+  position: absolute;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  pointer-events: none;
+}
+
+/* --- rails -------------------------------------------------------------- */
+
+/* Sleepers are a fat dashed stroke: each 1.6px dash renders as a tie across the
+   full 11px stroke width. Cheap, and it follows curves for free. */
+.sleepers,
+.ladder-sleepers {
+  fill: none;
+  stroke: var(--sleeper);
+  stroke-width: 7.5;
+  stroke-dasharray: 1.5 9.5;
+  stroke-linecap: butt;
+  opacity: 0.85;
+}
+
+.ladder-sleepers {
+  stroke-width: 6.5;
+  stroke-dasharray: 1.3 8.5;
+  opacity: 0.55;
+}
+
+.rail,
+.ladder-rail,
+.turnout,
+.shed-floor {
+  fill: none;
+  stroke: var(--rail);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+}
+
+/* The gutter is where the engine drives. Keep it quiet so the movement reads. */
+.ladder-rail {
+  stroke-width: 1.8;
+  opacity: 0.5;
+}
+
+.turnout {
+  stroke-width: 1.8;
+  opacity: 0.7;
+}
+
+.railhead {
+  fill: none;
+  stroke: var(--paper-2);
+  stroke-width: 0.7;
+  stroke-linecap: round;
+  opacity: 0.55;
+}
+
+.row.is-active .rail {
+  stroke: var(--rail-strong);
+  stroke-width: 2.7;
+}
+
+.row.is-active .sleepers {
+  stroke: var(--rail);
+  opacity: 0.65;
+}
+
+.blade-arm {
+  fill: none;
+  stroke: var(--rail);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  transition: stroke 120ms ease;
+}
+
+.blade.is-thrown .blade-arm {
+  stroke: var(--accent);
+}
+
+.shed {
+  fill: var(--paper-3);
+  stroke: var(--rail);
+  stroke-width: 1.8;
+}
+
+.shed-mouth {
+  fill: var(--paper);
+  stroke: none;
+  opacity: 0.85;
+}
+
+@media (prefers-color-scheme: dark) {
+  .shed-mouth {
+    fill: #0b0a09;
+  }
+}
+
+/* --- locomotive --------------------------------------------------------- */
+
+.loco .body {
+  fill: var(--rail-strong);
+}
+
+.loco .cab {
+  fill: var(--accent);
+}
+
+.loco .glass {
+  fill: var(--paper-2);
+  opacity: 0.9;
+}
+
+.loco .wheel {
+  fill: var(--paper-2);
+  stroke: var(--rail-strong);
+  stroke-width: 2;
+}
+
+.loco .rod {
+  stroke: var(--rail-strong);
+  stroke-width: 1.4;
+  fill: none;
+  opacity: 0.8;
+}
+
+.loco .lamp {
+  fill: #ffd98a;
+  stroke: var(--rail-strong);
+  stroke-width: 0.8;
+}
+
+.loco .beam {
+  fill: #ffd98a;
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+.rail-svg.is-moving .loco .beam {
+  opacity: 0.16;
+}
+
+.loco-shadow ellipse {
+  fill: var(--ink);
+  opacity: 0.1;
+}
+
+.loco.at-depot {
+  opacity: 0.72;
+}
+
+/* --- signals ------------------------------------------------------------ */
+
+.signal {
+  cursor: pointer;
+}
+
+.sig-post {
+  stroke: var(--rail);
+  stroke-width: 1.8;
+  fill: none;
+  stroke-linecap: round;
+}
+
+.sig-base {
+  fill: var(--rail);
+}
+
+.sig-hood {
+  fill: none;
+  stroke: var(--rail);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.sig-lamp {
+  fill: var(--sig-off);
+  stroke: var(--paper);
+  stroke-width: 1;
+  transition: fill 220ms ease;
+}
+
+.sig-glow {
+  fill: var(--sig-off);
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+
+.signal:hover .sig-lamp {
+  stroke: var(--ink-3);
+}
+
+.aspect-clear .sig-lamp {
+  fill: var(--sig-clear);
+}
+.aspect-clear .sig-glow {
+  fill: var(--sig-clear);
+  opacity: 0.17;
+}
+
+.aspect-ready .sig-lamp {
+  fill: var(--sig-ready);
+}
+.aspect-ready .sig-glow {
+  fill: var(--sig-ready);
+  opacity: 0.2;
+  animation: breathe 2.6s ease-in-out infinite;
+}
+
+.aspect-caution .sig-lamp {
+  fill: var(--sig-caution);
+}
+.aspect-caution .sig-glow {
+  fill: var(--sig-caution);
+  opacity: 0.13;
+}
+
+.aspect-auto .sig-lamp {
+  fill: var(--sig-auto);
+}
+.aspect-auto .sig-glow {
+  fill: var(--sig-auto);
+  opacity: 0.15;
+  animation: breathe 3.6s ease-in-out infinite;
+}
+
+.aspect-danger .sig-lamp {
+  fill: var(--sig-danger);
+}
+.aspect-danger .sig-glow {
+  fill: var(--sig-danger);
+  opacity: 0.15;
+}
+
+/* The only looping animation in the product. It is the ambient channel from
+   spec §14 level 2 — a state change you can notice without being interrupted. */
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.07;
+  }
+  50% {
+    opacity: 0.26;
+  }
+}
+
+/* --- return marker ------------------------------------------------------ */
+
+.marker {
+  cursor: pointer;
+}
+
+.mk-post {
+  stroke: var(--rail);
+  stroke-width: 1.8;
+  fill: none;
+  stroke-linecap: round;
+}
+
+.mk-plate {
+  fill: var(--paper-2);
+  stroke: var(--ink-3);
+  stroke-width: 1.4;
+}
+
+.mk-dot {
+  fill: none;
+  stroke: var(--ink-3);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+}
+
+.marker:hover .mk-plate {
+  stroke: var(--accent);
+}
+
+.marker:hover .mk-dot {
+  stroke: var(--accent);
+}
+
+.marker.is-hidden {
+  opacity: 0;
+}
+
+/* --- bottom bar --------------------------------------------------------- */
+
+.bottom {
+  flex: 0 0 auto;
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--edge);
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  background: var(--paper);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.hint {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--ink-3);
+  letter-spacing: 0.06em;
+}
+
+/* --- empty state -------------------------------------------------------- */
+
+.empty {
+  padding: 26px 18px;
+  text-align: left;
+}
+
+.empty h2 {
+  font-size: 17px;
+  font-weight: 620;
+  margin: 0 0 6px;
+  letter-spacing: -0.01em;
+}
+
+.empty p {
+  color: var(--ink-2);
+  margin: 0 0 16px;
+  font-size: 12.5px;
+  max-width: 34ch;
+}
+
+.empty-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* --- forms -------------------------------------------------------------- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.field label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.field .optional {
+  text-transform: none;
+  letter-spacing: 0.02em;
+  opacity: 0.75;
+}
+
+input[type='text'],
+textarea {
+  font-family: var(--font-note);
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--paper-2);
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  padding: 8px 9px;
+  width: 100%;
+  resize: none;
+}
+
+input[type='text']:focus,
+textarea:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+input[type='text']::placeholder,
+textarea::placeholder {
+  color: var(--ink-3);
+  opacity: 0.8;
+}
+
+/* --- sheet -------------------------------------------------------------- */
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 18, 14, 0.32);
+  z-index: 30;
+  animation: fade 140ms ease;
+}
+
+@media (prefers-color-scheme: dark) {
+  .scrim {
+    background: rgba(0, 0, 0, 0.52);
+  }
+}
+
+.sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 88%;
+  overflow-y: auto;
+  z-index: 31;
+  background: var(--paper-2);
+  border-top: 1px solid var(--edge);
+  border-radius: 12px 12px 0 0;
+  box-shadow: var(--shadow);
+  padding: 14px 14px 16px;
+  animation: rise 200ms cubic-bezier(0.16, 0.84, 0.32, 1);
+}
+
+@keyframes rise {
+  from {
+    transform: translateY(14px);
+    opacity: 0;
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+.sheet h3 {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0 0 9px;
+  font-weight: 500;
+}
+
+.sheet-step + .sheet-step {
+  margin-top: 15px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--edge);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  appearance: none;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 5px 9px;
+  border-radius: 20px;
+  border: 1px solid var(--edge);
+  background: var(--paper);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.chip:hover {
+  border-color: var(--ink-3);
+  color: var(--ink);
+}
+
+.chip.is-on {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+
+.dest-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dest {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 9px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.dest:hover {
+  background: var(--paper-3);
+  border-color: var(--edge);
+}
+
+.dest-lamp {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--sig-off);
+}
+
+.dest-lamp.aspect-ready {
+  background: var(--sig-ready);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--sig-ready) 22%, transparent);
+}
+.dest-lamp.aspect-caution {
+  background: var(--sig-caution);
+}
+.dest-lamp.aspect-auto {
+  background: var(--sig-auto);
+}
+.dest-lamp.aspect-danger {
+  background: var(--sig-danger);
+}
+.dest-lamp.aspect-clear {
+  background: var(--sig-clear);
+}
+
+.dest-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.dest-name {
+  display: block;
+  font-size: 13px;
+  font-weight: 550;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dest-stop {
+  display: block;
+  font-family: var(--font-note);
+  font-size: 11.5px;
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dest-meta {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  flex: 0 0 auto;
+}
+
+.sheet-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 14px;
+  align-items: center;
+}
+
+/* --- settings ----------------------------------------------------------- */
+
+.setting {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px dashed var(--edge);
+}
+
+.setting:last-of-type {
+  border-bottom: 0;
+}
+
+.setting-copy strong {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 570;
+}
+
+.setting-copy span {
+  color: var(--ink-3);
+  font-size: 11.5px;
+  display: block;
+  margin-top: 2px;
+}
+
+.switch {
+  appearance: none;
+  width: 34px;
+  height: 20px;
+  border-radius: 20px;
+  background: var(--edge);
+  border: 1px solid var(--edge);
+  position: relative;
+  cursor: pointer;
+  flex: 0 0 auto;
+  transition: background 140ms ease;
+}
+
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--paper-2);
+  transition: transform 160ms cubic-bezier(0.16, 0.84, 0.32, 1);
+}
+
+.switch:checked {
+  background: var(--sig-clear);
+  border-color: var(--sig-clear);
+}
+
+.switch:checked::after {
+  transform: translateX(14px);
+}
+
+select {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 4px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--edge);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.privacy-note {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  line-height: 1.5;
+  margin: 12px 0 0;
+  padding: 10px;
+  border: 1px dashed var(--edge);
+  border-radius: 7px;
+}
+
+/* --- toast -------------------------------------------------------------- */
+
+.toast {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 40;
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: 8px;
+  padding: 9px 11px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  box-shadow: var(--shadow);
+  animation: rise 180ms cubic-bezier(0.16, 0.84, 0.32, 1);
+}
+
+.toast button {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  color: inherit;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+@media (prefers-color-scheme: dark) {
+  .toast button {
+    border-color: rgba(0, 0, 0, 0.3);
+  }
+}
+
+/* --- reduced motion ----------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
