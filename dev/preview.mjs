@@ -131,7 +131,11 @@ async function openPanel(seed, { dark = false } = {}) {
     if (m.type() === 'error') errors.push(`console: ${m.text()}`);
   });
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
-  if (seed) await page.addInitScript((s) => (window.__SEED__ = s), seed);
+  if (seed) {
+    const initialSeed = structuredClone(seed);
+    initialSeed.settings = { ...initialSeed.settings, theme: dark ? 'nighttime' : initialSeed.settings?.theme || 'daytime' };
+    await page.addInitScript((s) => (window.__SEED__ = s), initialSeed);
+  }
   await page.goto('http://localhost:8899/ext/sidepanel/_preview.html');
   await page.waitForTimeout(500);
   return { ctx, page };
@@ -172,7 +176,13 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.p
   await shot(page, '05-switch-sheet');
 
   await page.click('.chip[data-reason="ai"]');
+  await page.focus('#sw-stop');
+  await page.keyboard.press('Shift+Enter');
+  const multilineStop = await page.inputValue('#sw-stop');
+  console.log('shift+enter newline:', multilineStop.includes('\n') ? 'OK' : 'BAD');
+  if (!multilineStop.includes('\n')) throw new Error('Shift+Enter did not add a newline to the pickup note');
   await page.click('[data-dest="d"]');
+  await page.keyboard.press('Enter');
   // Sample the run so the arc through the turnouts can actually be inspected.
   for (const [i, ms] of [180, 160, 160, 200].entries()) {
     await page.waitForTimeout(ms);
@@ -222,6 +232,12 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.p
   await page.click('#btn-settings');
   await page.waitForTimeout(250);
   await shot(page, '12-settings');
+  await page.click('[data-theme="nighttime"]');
+  await page.waitForTimeout(150);
+  const theme = await page.getAttribute('html', 'data-theme');
+  console.log('theme toggle:', theme, theme === 'nighttime' ? 'OK' : 'BAD');
+  if (theme !== 'nighttime') throw new Error('Nighttime setting did not apply');
+  await shot(page, '12b-settings-nighttime');
   await page.keyboard.press('Escape');
 
   await page.click('[data-act="arrived"]');
@@ -252,6 +268,18 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.p
   }));
   console.log('after resume:', JSON.stringify(resumed), resumed.loco === 'b' && resumed.bMarkerHidden ? 'OK' : 'BAD');
   await shot(page, '15-resumed');
+
+  // The shed drawing and its label both expose the same park action. The label
+  // is the easier target at narrow widths, so exercise that path here.
+  await page.click('.depot-label');
+  const depotSelected = await page.locator('[data-dest="__depot__"]').evaluate((el) => el.classList.contains('is-selected'));
+  console.log('shed click selects park:', depotSelected ? 'OK' : 'BAD');
+  if (!depotSelected) throw new Error('Clicking the shed did not preselect park');
+  await page.click('#sw-go');
+  await page.waitForTimeout(1800);
+  const parked = await page.evaluate(async () => (await chrome.storage.local.get('ty')).ty.locomotive.trackId);
+  console.log('shed enter parks:', parked === null ? 'OK' : 'BAD');
+  if (parked !== null) throw new Error('The switch sheet Enter button did not park the locomotive');
   await ctx.close();
 }
 

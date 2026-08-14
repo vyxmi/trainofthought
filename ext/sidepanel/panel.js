@@ -133,6 +133,7 @@ function hideToast() {
 async function render(next, { animate = true } = {}) {
   const before = state;
   state = next;
+  document.documentElement.dataset.theme = next.settings?.theme === 'nighttime' ? 'nighttime' : 'daytime';
   motion.setMode(next.settings?.motion || 'auto');
 
   const ids = next.order.filter((id) => next.tracks[id]);
@@ -170,20 +171,23 @@ function renderLabels(s) {
     b.style.left = `${slot.labelX}px`;
     b.style.top = `${slot.labelY}px`;
     b.style.width = `${Math.max(90, layout.width - slot.labelX - 36)}px`;
-    const stop = t.currentStop || (t.id === activeId ? 'no stop noted' : 'nothing noted');
+    const stop = t.currentStop?.trim() || '';
     b.innerHTML =
       `<span class="lbl-head"><span class="lbl-name">${esc(t.name)}</span>` +
       `<span class="lbl-status">${esc(statusWord(t))}</span></span>` +
-      `<span class="lbl-stop">${esc(stop)}</span>`;
-    b.title = t.id === activeId ? `${t.name} — the locomotive is here` : `Resume ${t.name}`;
+      (stop ? `<span class="lbl-stop">${esc(stop)}</span>` : '');
+    b.title = t.id === activeId ? `${t.name}: the locomotive is here` : `Resume ${t.name}`;
     labelsEl.appendChild(b);
   }
 
-  const d = document.createElement('div');
+  const d = document.createElement('button');
+  d.type = 'button';
   d.className = 'depot-label';
+  d.dataset.action = 'depot';
   d.style.left = `${layout.depot.labelX}px`;
   d.style.top = `${layout.depot.labelY}px`;
   d.textContent = 'shed';
+  d.title = activeId ? 'Park in the shed' : 'The locomotive is in the shed';
   labelsEl.appendChild(d);
 }
 
@@ -194,7 +198,7 @@ function renderNow(s) {
     nowEl.innerHTML = `
       <div class="empty">
         <h2>Lay your first track.</h2>
-        <p>A track is one train of thought — a project, a thread, a thing you keep coming back to. There's one locomotive: your attention. It can only be in one place, which is the honest part.</p>
+        <p>A track is one train of thought: a project, a thread, a thing you keep coming back to. There's one locomotive: your attention. It can only be in one place, which is the honest part.</p>
         <div class="empty-form">
           <div class="field">
             <label for="first-name">What are you working on?</label>
@@ -218,7 +222,7 @@ function renderNow(s) {
       <div class="eyebrow">in the shed</div>
       <div class="now-name" style="font-size:15px;font-weight:560;color:var(--ink-2)">Your attention isn't on a track.</div>
       <div class="now-dest">${
-        ready.length ? `${ready.length} ready to pick up — tap a track below` : 'Tap a track below to take the locomotive out'
+        ready.length ? `${ready.length} ready to pick up. Tap a track below` : 'Tap a track below to take the locomotive out'
       }</div>
       <div class="now-actions"><button class="btn" data-act="new">+ new track</button></div>`;
     wireNow();
@@ -363,6 +367,7 @@ function openSheet(html, onMount) {
 function closeSheet() {
   sheetEl.hidden = true;
   scrimEl.hidden = true;
+  sheetEl.onkeydown = null;
   sheetEl.replaceChildren();
 }
 
@@ -378,7 +383,7 @@ document.addEventListener('keydown', (e) => {
  * steps are still visually separated, so it reads as three questions and
  * behaves as one.
  */
-function openSwitchSheet(mode = 'switch', { jumpToNew = false } = {}) {
+function openSwitchSheet(mode = 'switch', { jumpToNew = false, initialDest = null } = {}) {
   const cur = T.activeTrack(state);
   const prefill = cur?.currentStop || '';
   const others = state.order.map((id) => state.tracks[id]).filter((t) => t && t.id !== cur?.id);
@@ -390,7 +395,7 @@ function openSwitchSheet(mode = 'switch', { jumpToNew = false } = {}) {
         <span class="dest-lamp aspect-${aspectFor(t)}"></span>
         <span class="dest-body">
           <span class="dest-name">${esc(t.name)}</span>
-          <span class="dest-stop">${esc(t.currentStop || 'nothing noted')}</span>
+          ${t.currentStop?.trim() ? `<span class="dest-stop">${esc(t.currentStop.trim())}</span>` : ''}
         </span>
         <span class="dest-meta">${esc(statusWord(t))}</span>
       </button>`
@@ -402,10 +407,6 @@ function openSwitchSheet(mode = 'switch', { jumpToNew = false } = {}) {
     ${
       cur
         ? `<div class="sheet-step">
-             <h3>Where should we pick ${esc(cur.name)} back up?</h3>
-             <textarea id="sw-stop" rows="2" placeholder="Test whether guest UID survives signup">${esc(prefill)}</textarea>
-           </div>
-           <div class="sheet-step">
              <h3>Why are you leaving?</h3>
              <div class="chips" id="sw-reasons">
                <button class="chip is-on" data-reason="${LEFT.SWITCHING}">just switching</button>
@@ -413,6 +414,10 @@ function openSwitchSheet(mode = 'switch', { jumpToNew = false } = {}) {
                <button class="chip" data-reason="${LEFT.WAITING}">waiting</button>
                <button class="chip" data-reason="${LEFT.AI}">AI working</button>
              </div>
+           </div>
+           <div class="sheet-step">
+             <h3>Where should we pick <strong class="track-inline">${esc(cur.name)}</strong> back up? <span class="optional">(optional)</span></h3>
+             <textarea id="sw-stop" rows="2" placeholder="Test whether guest UID survives signup">${esc(prefill)}</textarea>
            </div>`
         : ''
     }
@@ -429,20 +434,22 @@ function openSwitchSheet(mode = 'switch', { jumpToNew = false } = {}) {
           cur
             ? `<button class="dest" data-dest="__depot__">
                  <span class="dest-lamp"></span>
-                 <span class="dest-body"><span class="dest-name">nowhere — park it</span>
+                 <span class="dest-body"><span class="dest-name">nowhere: park it</span>
                  <span class="dest-stop">the locomotive goes back to the shed</span></span>
                </button>`
             : ''
         }
       </div>
     </div>
-    <div class="sheet-actions">
-      <button class="btn btn-quiet" data-close>cancel</button>
+    <div class="sheet-actions switch-actions">
+      <button class="sheet-cancel" data-close><span>cancel</span><small>esc to cancel</small></button>
       <span class="spacer"></span>
-      <span class="hint">esc to cancel</span>
+      <button class="btn btn-primary enter-button" id="sw-go" disabled>enter</button>
     </div>`,
     () => {
       let reason = LEFT.SWITCHING;
+      let selectedDest = mode === 'park' ? '__depot__' : initialDest;
+      let submitting = false;
       const chips = sheetEl.querySelectorAll('#sw-reasons .chip');
       chips.forEach(
         (c) =>
@@ -469,21 +476,46 @@ function openSwitchSheet(mode = 'switch', { jumpToNew = false } = {}) {
         };
       };
 
-      sheetEl.querySelectorAll('[data-dest]').forEach((b) => {
-        b.onclick = async () => {
-          const dest = b.dataset.dest;
-          const leave = await gather();
-          closeSheet();
-          if (dest === '__new__') return openNewTrackSheet(leave);
-          if (dest === '__depot__') return T.park(leave);
-          const target = state.tracks[dest];
+      const go = $('sw-go');
+      const selectDestination = (dest, { scroll = false } = {}) => {
+        selectedDest = dest;
+        sheetEl.querySelectorAll('[data-dest]').forEach((b) => b.classList.toggle('is-selected', b.dataset.dest === dest));
+        go.disabled = !selectedDest;
+        const selected = sheetEl.querySelector(`[data-dest="${CSS.escape(dest)}"]`);
+        if (scroll) selected?.scrollIntoView({ block: 'nearest' });
+      };
+
+      const submit = async () => {
+        if (!selectedDest || submitting) return;
+        submitting = true;
+        go.disabled = true;
+        const dest = selectedDest;
+        const leave = await gather();
+        closeSheet();
+        if (dest === '__new__') return openNewTrackSheet(leave);
+        if (dest === '__depot__') return T.park(leave);
+        const target = state.tracks[dest];
           if (!target) return;
           if (target.leftAt) return T.resume({ toId: dest, ...leave });
           return T.switchTo({ toId: dest, ...leave });
-        };
-      });
+      };
 
-      if (jumpToNew) sheetEl.querySelector('[data-dest="__new__"]')?.click();
+      sheetEl.querySelectorAll('[data-dest]').forEach((b) => {
+        b.onclick = () => selectDestination(b.dataset.dest);
+      });
+      go.onclick = submit;
+      sheetEl.onkeydown = (e) => {
+        if (e.key !== 'Enter') return;
+        if (e.target === stopField && e.shiftKey) return;
+        e.preventDefault();
+        submit();
+      };
+
+      if (selectedDest) selectDestination(selectedDest, { scroll: true });
+      if (jumpToNew) {
+        selectDestination('__new__');
+        submit();
+      }
     }
   );
 }
@@ -497,7 +529,7 @@ function openNewTrackSheet(leave = null) {
       <input type="text" id="nt-name" placeholder="Portfolio" autocomplete="off" />
     </div>
     <div class="sheet-step">
-      <h3>Where are you headed? <span class="optional">— optional</span></h3>
+      <h3>Where are you headed? <span class="optional">(optional)</span></h3>
       <input type="text" id="nt-dest" placeholder="Finish deposit-flow case study" autocomplete="off" />
     </div>
     <div class="sheet-actions">
@@ -538,6 +570,16 @@ function openSettings() {
     <h3>Settings</h3>
     <div class="setting">
       <div class="setting-copy">
+        <strong>Time of day</strong>
+        <span>Choose the light in the yard.</span>
+      </div>
+      <div class="theme-toggle" role="group" aria-label="Time of day">
+        <button type="button" data-theme="daytime" class="${s.theme !== 'nighttime' ? 'is-on' : ''}">daytime</button>
+        <button type="button" data-theme="nighttime" class="${s.theme === 'nighttime' ? 'is-on' : ''}">nighttime</button>
+      </div>
+    </div>
+    <div class="setting">
+      <div class="setting-copy">
         <strong>Learn where I work (optional)</strong>
         <span>When enabled, Trainyard records the hostnames you visit while a track is active to learn which sites belong with it. This browsing activity stays only in Chrome storage on this device; it is never sent to us or anyone else. Page contents are never read.</span>
       </div>
@@ -576,6 +618,14 @@ function openSettings() {
       <button class="btn btn-quiet" data-close>close</button>
     </div>`,
     () => {
+      sheetEl.querySelectorAll('[data-theme]').forEach((button) => {
+        button.onclick = async () => {
+          const theme = button.dataset.theme;
+          document.documentElement.dataset.theme = theme;
+          sheetEl.querySelectorAll('[data-theme]').forEach((item) => item.classList.toggle('is-on', item === button));
+          await T.setSetting('theme', theme);
+        };
+      });
       $('set-observe').onchange = (e) => T.setSetting('observe', e.target.checked);
       $('set-motion').onchange = (e) => T.setSetting('motion', e.target.value);
       $('set-export').onclick = async () =>
@@ -668,15 +718,7 @@ function onPickTrack(id) {
     if (target.leftAt) return T.resume({ toId: id });
     return T.switchTo({ toId: id });
   }
-  openSwitchSheet('switch');
-  // Preselect the destination the user already indicated.
-  requestAnimationFrame(() => {
-    const btn = sheetEl.querySelector(`[data-dest="${CSS.escape(id)}"]`);
-    if (btn) {
-      btn.style.borderColor = 'var(--accent)';
-      btn.scrollIntoView({ block: 'nearest' });
-    }
-  });
+  openSwitchSheet('switch', { initialDest: id });
 }
 
 // ---------------------------------------------------------------------------
@@ -688,6 +730,8 @@ svgEl.addEventListener('click', (e) => {
   if (sig) return onSignal(sig.dataset.id);
   const mk = e.target.closest?.('[data-action="resume"]');
   if (mk) return onPickTrack(mk.dataset.id);
+  const depot = e.target.closest?.('[data-action="depot"]');
+  if (depot && T.activeTrack(state)) return openSwitchSheet('park');
 });
 
 svgEl.addEventListener('keydown', (e) => {
@@ -696,12 +740,16 @@ svgEl.addEventListener('keydown', (e) => {
   if (!el) return;
   e.preventDefault();
   if (el.dataset.action === 'signal') onSignal(el.dataset.id);
-  else onPickTrack(el.dataset.id);
+  else if (el.dataset.action === 'depot') {
+    if (T.activeTrack(state)) openSwitchSheet('park');
+  } else onPickTrack(el.dataset.id);
 });
 
 labelsEl.addEventListener('click', (e) => {
   const lbl = e.target.closest?.('.lbl');
   if (lbl) onPickTrack(lbl.dataset.id);
+  const depot = e.target.closest?.('[data-action="depot"]');
+  if (depot && T.activeTrack(state)) openSwitchSheet('park');
 });
 
 $('btn-new').onclick = () => {

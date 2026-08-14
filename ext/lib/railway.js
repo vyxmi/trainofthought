@@ -231,7 +231,7 @@ export function signal(track) {
     tabindex: '0',
   });
   g.appendChild(el('title', {}, []));
-  g.lastChild.textContent = `${track.name} — ${aspect}`;
+  g.lastChild.textContent = `${track.name}: ${aspect}`;
   g.appendChild(el('rect', { class: 'sig-base', x: -3.5, y: -3, width: 7, height: 3, rx: 1 }));
   g.appendChild(el('path', { class: 'sig-post', d: 'M 0,-2 L 0,-21' }));
   g.appendChild(el('path', { class: 'sig-hood', d: 'M -5.5,-30.5 A 5.5 5.5 0 0 1 5.5,-30.5' }));
@@ -260,7 +260,15 @@ export function returnMarker(track) {
 
 /** The engine shed. Where the locomotive sits when your attention isn't anywhere. */
 export function depotShed(slot) {
-  const g = el('g', { class: 'depot', transform: `translate(${slot.railEndX - 4},${slot.y})` });
+  const g = el('g', {
+    class: 'depot',
+    transform: `translate(${slot.railEndX - 4},${slot.y})`,
+    'data-action': 'depot',
+    role: 'button',
+    tabindex: '0',
+  });
+  g.appendChild(el('title', {}, []));
+  g.lastChild.textContent = 'Park in the shed';
   g.appendChild(el('path', { class: 'shed-floor', d: `M ${-(slot.railEndX - slot.lx) + 4},0 L 6,0` }));
   g.appendChild(el('path', { class: 'shed', d: 'M -30,0 L -30,-17 A 15 15 0 0 1 0,-17 L 0,0' }));
   g.appendChild(el('path', { class: 'shed-mouth', d: 'M -22,0 L -22,-15 A 11 11 0 0 1 -0.5,-15 L -0.5,0 Z' }));
@@ -338,7 +346,7 @@ export function syncAspects(handles, layout, state) {
     const aspect = aspectFor(track);
     row.signal.setAttribute('class', `signal aspect-${aspect}`);
     const title = row.signal.querySelector('title');
-    if (title) title.textContent = `${track.name} — ${aspect}`;
+    if (title) title.textContent = `${track.name}: ${aspect}`;
 
     const isActive = id === activeId;
     row.g.classList.toggle('is-active', isActive);

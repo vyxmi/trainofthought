@@ -2,7 +2,7 @@
 
 One locomotive, many tracks. A Chrome side panel for switching between trains of thought without losing them.
 
-**V1 scope:** the core loop only — lay a track, work, leave a stop, switch, resume. Plus the minimum railway needed to make state legible at a glance. No junction detection, no prompting, no automation. Optional context observation is off by default and runs only after the user opts in from Settings.
+**V1 scope:** the core loop only: lay a track, work, leave a stop, switch, resume. Plus the minimum railway needed to make state legible at a glance. No junction detection, no prompting, no automation. Optional context observation is off by default and runs only after the user opts in from Settings.
 
 ---
 
@@ -24,11 +24,11 @@ No build step. Edit a file, hit the reload arrow on the extensions page, reopen 
 | Thing | What it is |
 |---|---|
 | **Locomotive** | Your attention. There is exactly one. It is on one track or in the shed. |
-| **Track** | A train of thought — a project, a thread, a thing you return to. |
+| **Track** | A train of thought: a project, a thread, a thing you return to. |
 | **Current stop** | Where you are on that track. It is *also* the re-entry cue: when you leave, this is what you'll read when you come back. One field, not two. |
 | **Destination** | Optional. The stable goal. Never required to create a track. |
 | **Signal** | The track's state, at the entrance. Tap it to mark a track ready. |
-| **Return board** | The marker left standing where the engine was. Shown only on tracks the engine isn't on — where it *is*, the engine is the marker. |
+| **Return board** | The marker left standing where the engine was. Shown only on tracks the engine isn't on; where it *is*, the engine is the marker. |
 | **Shed** | Where the locomotive sits when your attention isn't on anything tracked. |
 
 States: `active` · `parked` · `waiting` · `ai_working` · `ready` · `arrived`. "Hit a stop" is parked with a red signal rather than a seventh state.
@@ -56,7 +56,7 @@ dev/                         Not shipped. Preview harness, chrome mock, icon gen
 
 **Architecture:** the panel never messages the service worker. Both read and write `chrome.storage.local` and re-render from `storage.onChanged`. The panel is therefore correct after a reload, after Chrome evicts the worker (constantly), and with two windows open.
 
-**Storage ownership** matters and is load-bearing: `ty` (durable state) is written **only** by the panel. `ty_obs` (learned domain associations) is written **only** by the worker. Since every writer sets a whole key, shared ownership would mean the worker's per-minute flush could read a snapshot, hold it across a few awaits, and write it back over a switch you just made — silently undoing your action. Different keys, no race. If you ever make the worker mutate a track, that guarantee is gone and you need a real lock.
+**Storage ownership** matters and is load-bearing: `ty` (durable state) is written **only** by the panel. `ty_obs` (learned domain associations) is written **only** by the worker. Since every writer sets a whole key, shared ownership would mean the worker's per-minute flush could read a snapshot, hold it across a few awaits, and write it back over a switch you just made, silently undoing your action. Different keys, no race. If you ever make the worker mutate a track, that guarantee is gone and you need a real lock.
 
 ---
 
@@ -67,7 +67,7 @@ Four movements, and nothing else moves:
 | Movement | What it answers |
 |---|---|
 | `switchTracks` | where did my attention go, and where from |
-| `layTrack` | this place is new — it was built, not appended |
+| `layTrack` | this place is new: it was built, not appended |
 | `markReturn` | something was deliberately left, right there |
 | `resumeTo` | you're back, and this is the spot |
 
@@ -92,11 +92,11 @@ Then in `ext/sidepanel/index.html`, before `panel.js`:
 <script>gsap.registerPlugin(MotionPathPlugin)</script>
 ```
 
-…and set `USE_GSAP = true` at the top of `lib/anim.js`. Nothing else changes — every caller goes through `place()` / `followPath()` / `tween()` / `drawPath()`, and both backends implement all four identically. MV3 blocks remote scripts, so the files must be vendored locally.
+…and set `USE_GSAP = true` at the top of `lib/anim.js`. Nothing else changes: every caller goes through `place()` / `followPath()` / `tween()` / `drawPath()`, and both backends implement all four identically. MV3 blocks remote scripts, so the files must be vendored locally.
 
 *(They aren't bundled here because the build sandbox had no npm access.)*
 
-**One rule if you touch this:** a given element is positioned by exactly one backend for its whole life. Never mix the transform *attribute* (native) with GSAP's CSS transforms on the same node — they double-apply.
+**One rule if you touch this:** a given element is positioned by exactly one backend for its whole life. Never mix the transform *attribute* (native) with GSAP's CSS transforms on the same node; they double-apply.
 
 ---
 
@@ -116,7 +116,7 @@ Then in `ext/sidepanel/index.html`, before `panel.js`:
 Settings → **export usage log** gives you the raw local event stream. What to look at, in priority order:
 
 **Does the loop work at all?**
-- `track_created` ordinal ≥ 2 — did they build a second track, or is this a single-project tool?
+- `track_created` ordinal ≥ 2: did they build a second track, or is this a single-project tool?
 - `track_parked` → `track_resumed` rate. *Parked tracks that are never resumed are the loudest failure signal.* It means the yard became a graveyard, i.e. a task list.
 - `msParked` on resume. If this is usually days, this isn't a context-switching tool, it's a backlog.
 
@@ -137,7 +137,7 @@ Deliberately not recorded: hours focused, task counts, streaks, anything scoreab
 node dev/preview.mjs
 ```
 
-Serves `ext/` over http, injects a `chrome.*` mock, drives the real panel in headless Chromium, and writes screenshots of every state to `shots/`. **Console errors fail the run.** This is the fastest way to catch a silent exception in a render path — it has already caught an invisible overlay eating every click at the bottom of the panel, and two `text-overflow: ellipsis` rules that did nothing because they were on inline spans.
+Serves `ext/` over http, injects a `chrome.*` mock, drives the real panel in headless Chromium, and writes screenshots of every state to `shots/`. **Console errors fail the run.** This is the fastest way to catch a silent exception in a render path. It has already caught an invisible overlay eating every click at the bottom of the panel, and two `text-overflow: ellipsis` rules that did nothing because they were on inline spans.
 
 ---
 
@@ -145,6 +145,6 @@ Serves `ext/` over http, injects a `chrome.*` mock, drives the real panel in hea
 
 Junction detection is the obvious missing piece and it is missing on purpose. It's the second hypothesis, not the first, and a prompt that fires at the wrong moment during dogfooding will make you abandon a core loop that was actually working. Everything needed to build it is being recorded now (`ty_obs.byTrack` holds per-track domain hit counts; `ty_obs.absences` holds away-from-Chrome durations) and nothing acts on it.
 
-Build it when — and only when — the export above says people are actually resuming what they park.
+Build it when, and only when, the export above says people are actually resuming what they park.
 
 Also not built, per spec §29: task management, calendar, Pomodoro, blocking, scoring, collaboration, agent integrations, automatic decomposition, an elaborate railway map.

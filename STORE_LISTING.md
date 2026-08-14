@@ -1,4 +1,4 @@
-# Chrome Web Store listing — Trainyard v0.1.0
+# Chrome Web Store listing: Trainyard v0.1.0
 
 ## Product details
 
@@ -12,7 +12,7 @@
 
 Trainyard is a calm Chrome side panel for switching between trains of thought without losing your place.
 
-Lay a track for each project or thread. Keep one locomotive—your attention—on exactly one track at a time. Before switching, leave a short stop describing where to pick the work back up. When you return, that cue and an optional restorable tab snapshot are waiting for you.
+Lay a track for each project or thread. Keep one locomotive, your attention, on exactly one track at a time. Before switching, leave a short stop describing where to pick the work back up. When you return, that cue and an optional restorable tab snapshot are waiting for you.
 
 Trainyard includes:
 

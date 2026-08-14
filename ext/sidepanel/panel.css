@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Trainyard — side panel
+   Trainyard: side panel
    Visual direction: warm paper, printed ink, signal colour. Closer to a railway
    timetable than a dashboard. Every rail is a rule under a line of type, which
    is why the labels sit above their track rather than beside it.
@@ -27,7 +27,7 @@
   --sig-danger: #c44a3c;
   --sig-off: #b3ab98;
 
-  --accent: #a8412c; /* oxide red — rolling stock livery */
+  --accent: #a8412c; /* oxide red, rolling stock livery */
   --accent-ink: #fff8f2;
 
   --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif;
@@ -38,17 +38,16 @@
   --shadow: 0 1px 2px rgba(26, 24, 20, 0.06), 0 6px 20px -8px rgba(26, 24, 20, 0.18);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
+[data-theme='nighttime'] {
     --paper: #131210;
     --paper-2: #1b1a16;
     --paper-3: #232019;
-    --edge: #2e2a24;
-    --edge-soft: #262219;
+    --edge: #3c372f;
+    --edge-soft: #302c25;
 
-    --ink: #efebe1;
-    --ink-2: #a49d8e;
-    --ink-3: #726b5e;
+    --ink: #f7f3ea;
+    --ink-2: #c8c1b4;
+    --ink-3: #9b9384;
 
     --rail: #4e493e;
     --rail-strong: #d2cabb;
@@ -64,7 +63,6 @@
     --accent: #c4553c;
     --accent-ink: #1a0f0b;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -10px rgba(0, 0, 0, 0.7);
-  }
 }
 
 * {
@@ -317,11 +315,21 @@ button {
 
 .rail-svg {
   display: block;
+  position: relative;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.rail-svg .signal,
+.rail-svg .marker,
+.rail-svg .depot {
+  pointer-events: auto;
 }
 
 .labels {
   position: absolute;
   inset: 0;
+  z-index: 1;
   pointer-events: none;
 }
 
@@ -407,12 +415,25 @@ button {
 
 .depot-label {
   position: absolute;
+  pointer-events: auto;
+  appearance: none;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
   font-family: var(--font-mono);
   font-size: 9px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--ink-3);
-  pointer-events: none;
+  cursor: pointer;
+}
+
+.depot-label:hover,
+.depot-label:focus-visible {
+  color: var(--ink);
+  background: var(--paper-3);
+  outline: none;
 }
 
 /* --- rails -------------------------------------------------------------- */
@@ -498,10 +519,17 @@ button {
   opacity: 0.85;
 }
 
-@media (prefers-color-scheme: dark) {
-  .shed-mouth {
+[data-theme='nighttime'] .shed-mouth {
     fill: #0b0a09;
-  }
+}
+
+.depot {
+  cursor: pointer;
+}
+
+.depot:focus-visible .shed,
+.depot:hover .shed {
+  stroke: var(--ink-2);
 }
 
 /* --- locomotive --------------------------------------------------------- */
@@ -797,10 +825,8 @@ textarea::placeholder {
   animation: fade 140ms ease;
 }
 
-@media (prefers-color-scheme: dark) {
-  .scrim {
+[data-theme='nighttime'] .scrim {
     background: rgba(0, 0, 0, 0.52);
-  }
 }
 
 .sheet {
@@ -840,6 +866,18 @@ textarea::placeholder {
   color: var(--ink-3);
   margin: 0 0 9px;
   font-weight: 500;
+}
+
+.sheet h3 .track-inline {
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-weight: 750;
+}
+
+.sheet h3 .optional {
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  color: var(--ink-3);
 }
 
 .sheet-step + .sheet-step {
@@ -901,6 +939,12 @@ textarea::placeholder {
 .dest:hover {
   background: var(--paper-3);
   border-color: var(--edge);
+}
+
+.dest.is-selected {
+  background: var(--paper-3);
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .dest-lamp {
@@ -968,6 +1012,50 @@ textarea::placeholder {
   align-items: center;
 }
 
+.switch-actions {
+  align-items: flex-end;
+  padding-top: 2px;
+}
+
+.sheet-cancel {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 3px 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  font-family: var(--font-mono);
+}
+
+.sheet-cancel span {
+  font-size: 11px;
+}
+
+.sheet-cancel small {
+  font-size: 8.5px;
+  color: var(--ink-3);
+}
+
+.sheet-cancel:hover span {
+  color: var(--ink);
+}
+
+.enter-button {
+  min-width: 78px;
+  padding: 7px 15px;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.enter-button:disabled {
+  cursor: default;
+  opacity: 0.38;
+}
+
 /* --- settings ----------------------------------------------------------- */
 
 .setting {
@@ -994,6 +1082,33 @@ textarea::placeholder {
   font-size: 11.5px;
   display: block;
   margin-top: 2px;
+}
+
+.theme-toggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  padding: 2px;
+  border: 1px solid var(--edge);
+  border-radius: 7px;
+  background: var(--paper-3);
+}
+
+.theme-toggle button {
+  appearance: none;
+  border: 0;
+  border-radius: 5px;
+  padding: 4px 7px;
+  background: transparent;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  cursor: pointer;
+}
+
+.theme-toggle button.is-on {
+  background: var(--paper-2);
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgba(26, 24, 20, 0.14);
 }
 
 .switch {
@@ -1082,10 +1197,8 @@ select {
   cursor: pointer;
 }
 
-@media (prefers-color-scheme: dark) {
-  .toast button {
+[data-theme='nighttime'] .toast button {
     border-color: rgba(0, 0, 0, 0.3);
-  }
 }
 
 /* --- reduced motion ----------------------------------------------------- */
