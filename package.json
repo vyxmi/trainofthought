@@ -1,0 +1,15 @@
+{
+  "name": "trainyard",
+  "version": "0.1.0",
+  "description": "A Chrome side panel for switching between trains of thought without losing them.",
+  "private": true,
+  "scripts": {
+    "test": "node dev/preview.mjs"
+  },
+  "keywords": [
+    "chrome-extension",
+    "side-panel",
+    "context-switching"
+  ],
+  "license": "UNLICENSED"
+}
