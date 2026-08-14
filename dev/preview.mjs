@@ -108,9 +108,14 @@ const seeded = {
 
 // --- run -------------------------------------------------------------------
 
-const CHROME = ['/opt/pw-browsers/chromium-1194/chrome-linux/chrome', '/opt/pw-browsers/chromium/chrome-linux/chrome'].find(
-  (p) => fs.existsSync(p)
-);
+const CHROME = [
+  process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
+  '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
+  '/opt/pw-browsers/chromium/chrome-linux/chrome',
+  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+  'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+  process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+].find((p) => p && fs.existsSync(p));
 const browser = await chromium.launch(CHROME ? { executablePath: CHROME } : {});
 const errors = [];
 

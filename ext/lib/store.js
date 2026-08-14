@@ -80,7 +80,10 @@ export function defaultState() {
     /** Arrived tracks, most recent first. Lightweight history, not an archive. */
     history: [],
     settings: {
-      observe: true,
+      // Browsing activity is user data under Chrome Web Store policy, even
+      // when it never leaves the device. Observation therefore starts only
+      // after an explicit opt-in in Settings.
+      observe: false,
       motion: 'auto', // 'auto' respects prefers-reduced-motion | 'full' | 'off'
       restoreTabs: 'ask', // 'ask' | 'never'
     },

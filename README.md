@@ -2,7 +2,7 @@
 
 One locomotive, many tracks. A Chrome side panel for switching between trains of thought without losing them.
 
-**V1 scope:** the core loop only — lay a track, work, leave a stop, switch, resume. Plus the minimum railway needed to make state legible at a glance. No junction detection, no prompting, no automation. Context observation runs silently and records; it never asks you anything.
+**V1 scope:** the core loop only — lay a track, work, leave a stop, switch, resume. Plus the minimum railway needed to make state legible at a glance. No junction detection, no prompting, no automation. Optional context observation is off by default and runs only after the user opts in from Settings.
 
 ---
 
@@ -103,6 +103,7 @@ Then in `ext/sidepanel/index.html`, before `panel.js`:
 ## Privacy
 
 - **No host permissions. No content scripts.** The extension cannot read any page you visit, at all.
+- **Observation is off by default.** Enabling it in Settings is an explicit opt-in.
 - It sees tab hostnames and titles that Chrome hands it. Only **hostnames** are stored, for association learning.
 - Full URLs are written in exactly one place: a snapshot, taken only when you deliberately leave a track, deleted when that track arrives.
 - Everything is local. No account, no server, no network code.

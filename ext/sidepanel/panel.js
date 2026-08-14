@@ -538,8 +538,8 @@ function openSettings() {
     <h3>Settings</h3>
     <div class="setting">
       <div class="setting-copy">
-        <strong>Learn where I work</strong>
-        <span>Records which sites go with which track, so the yard can eventually recognise a context switch. Domains only — never page contents, never full URLs.</span>
+        <strong>Learn where I work (optional)</strong>
+        <span>When enabled, Trainyard records the hostnames you visit while a track is active to learn which sites belong with it. This browsing activity stays only in Chrome storage on this device; it is never sent to us or anyone else. Page contents are never read.</span>
       </div>
       <input type="checkbox" class="switch" id="set-observe" ${s.observe ? 'checked' : ''} />
     </div>
