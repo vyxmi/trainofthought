@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Trainyard</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="panel.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="wordmark">
+          <svg width="18" height="12" viewBox="0 0 18 12" fill="none" aria-hidden="true">
+            <path d="M1 3.5 H17" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".45" />
+            <path d="M1 8.5 H17" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".45" />
+            <path d="M1 3.5 C4 3.5 4 8.5 7 8.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".45" />
+            <circle cx="12" cy="8.5" r="2" fill="currentColor" />
+          </svg>
+          <span>TRAINYARD</span>
+        </div>
+        <button id="btn-settings" class="icon-btn" aria-label="Settings" title="Settings">
+          <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden="true">
+            <circle cx="7.5" cy="7.5" r="2.1" stroke="currentColor" stroke-width="1.3" />
+            <path
+              d="M7.5 1.2v1.6M7.5 12.2v1.6M13.8 7.5h-1.6M2.8 7.5H1.2M11.9 3.1l-1.1 1.1M4.2 10.8l-1.1 1.1M11.9 11.9l-1.1-1.1M4.2 4.2 3.1 3.1"
+              stroke="currentColor"
+              stroke-width="1.3"
+              stroke-linecap="round"
+            />
+          </svg>
+        </button>
+      </header>
+
+      <section class="now" id="now" aria-live="polite"></section>
+
+      <section class="yard" id="yard">
+        <svg id="rail" class="rail-svg" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"></svg>
+        <div class="labels" id="labels"></div>
+      </section>
+
+      <footer class="bottom">
+        <button class="btn" id="btn-new">+ new track</button>
+        <span class="spacer"></span>
+        <span class="hint" id="engine-hint"></span>
+      </footer>
+    </div>
+
+    <div class="scrim" id="scrim" hidden></div>
+    <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Trainyard" hidden></div>
+    <div class="toast" id="toast" hidden></div>
+
+    <script type="module" src="panel.js"></script>
+  </body>
+</html>
