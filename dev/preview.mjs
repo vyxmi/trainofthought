@@ -88,7 +88,8 @@ const seeded = {
       currentStop: 'Write deposit-flow results',
       status: 'active',
       leftBecause: null,
-      leftAt: null,
+      leftAt: NOW - 10800000,
+      lastActiveAt: NOW - 900000,
       snapshot: { takenAt: NOW - 3600000, tabs: [{ url: 'https://figma.com', title: 'Figma', active: true }] },
     }),
     b: t('b', 'PMO', { currentStop: 'Test guest → registered UID', status: 'ready', readyAt: NOW - 300000 }),
@@ -169,6 +170,25 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.p
 {
   const { ctx, page } = await openPanel(seeded, { dark: true });
   await shot(page, '04-yard-dark');
+  const stopDuration = await page.locator('.now-stop-duration').textContent();
+  if (!stopDuration.includes('current stop')) throw new Error('Current Stop duration is missing from the top panel');
+  if (await page.locator('.now-restore').count()) throw new Error('Removed tab snapshot UI is still visible');
+  if ((await page.locator('.now-actions .action-icon').count()) !== 3) throw new Error('Action icons are missing');
+  const idleMotion = await page.evaluate(() => ({
+    loco: getComputedStyle(document.querySelector('.loco-idle')).animationName,
+    rail: getComputedStyle(document.querySelector('.row.is-active .sleepers')).animationName,
+  }));
+  if (!idleMotion.loco.includes('locomotive-idle') || !idleMotion.rail.includes('active-track-drift')) {
+    throw new Error(`Idle micro-motion is missing: ${JSON.stringify(idleMotion)}`);
+  }
+  await page.click('.details-track[data-id="a"]');
+  const detailStyle = await page.evaluate(() => {
+    const name = document.querySelector('.details-name');
+    const stat = document.querySelector('.track-stats > div');
+    return { nameColor: getComputedStyle(name).color, statBackground: getComputedStyle(stat).backgroundColor };
+  });
+  if (detailStyle.nameColor === 'rgb(0, 0, 0)') throw new Error('Track Details title is black in nighttime mode');
+  if (detailStyle.statBackground !== 'rgba(0, 0, 0, 0)') throw new Error('Track stats still look like input boxes');
   await ctx.close();
 }
 
@@ -177,6 +197,8 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.p
   const { ctx, page } = await openPanel(seeded);
   await page.click('[data-act="switch"]');
   await page.waitForTimeout(320);
+  if (!(await page.locator('[data-dest="__depot__"] .dest-shed').count())) throw new Error('Park destination shed icon is missing');
+  if (await page.locator('[data-dest="__depot__"] .dest-stop').count()) throw new Error('Park destination helper text was not removed');
   await shot(page, '05-switch-sheet');
 
   await page.click('.chip[data-reason="ai"]');

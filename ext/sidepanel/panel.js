@@ -44,6 +44,7 @@ let editingStop = false;
 let skipNextAnim = false;
 let toastTimer = 0;
 let newMarkerEventIds = new Set();
+let reorderFlipPositions = null;
 
 const motion = new Motion(svgEl);
 
@@ -122,22 +123,28 @@ function totalActiveMs(track, s = state) {
   return total;
 }
 
+function stopDurationMs(track) {
+  if (!track?.leftAt) return 0;
+  const end = track.status === STATUS.ACTIVE && track.lastActiveAt > track.leftAt ? track.lastActiveAt : Date.now();
+  return Math.max(0, end - track.leftAt);
+}
+
 function latestEvent(track, type) {
   return [...(track?.events || [])].reverse().find((event) => event.type === type) || null;
 }
 
-/** Tab snapshots are the one place full URLs are written, and only on purpose. */
-async function captureSnapshot() {
-  try {
-    const tabs = await chrome.tabs.query({ currentWindow: true });
-    const keep = tabs
-      .filter((t) => t.url && /^https?:/.test(t.url))
-      .slice(0, 12)
-      .map((t) => ({ url: t.url, title: (t.title || '').slice(0, 120), active: !!t.active, pinned: !!t.pinned }));
-    return keep.length ? { takenAt: Date.now(), tabs: keep } : null;
-  } catch {
-    return null;
-  }
+const ACTION_ICONS = {
+  switch: `<svg viewBox="0 0 18 14" aria-hidden="true"><path d="M2 3h4c4 0 4 8 8 8h2M2 11h4c2.7 0 3.5-3.6 5.2-6C12.3 3.5 13.6 3 16 3"/><path d="m13.5 1.2 2.5 1.8-2.5 1.8M13.5 9.2 16 11l-2.5 1.8"/></svg>`,
+  park: `<svg viewBox="0 0 18 14" aria-hidden="true"><path d="M2 12h14M4 12V7.5a5 5 0 0 1 10 0V12M7 12V8.2a2 2 0 0 1 4 0V12"/></svg>`,
+  arrived: `<svg viewBox="0 0 18 14" aria-hidden="true"><path d="M4 13V1.5M4.5 2h8l-1.8 2.5L12.5 7h-8"/><path d="m7.2 10 1.4 1.4 2.8-3"/></svg>`,
+};
+
+function actionLabel(icon, label) {
+  return `<span class="action-icon">${ACTION_ICONS[icon]}</span><span>${label}</span>`;
+}
+
+function shedIcon() {
+  return `<svg class="dest-shed" viewBox="0 0 38 26" aria-hidden="true"><path class="dest-shed-floor" d="M1 24h36"/><path class="dest-shed-shell" d="M7 24V12a12 12 0 0 1 24 0v12"/><path class="dest-shed-mouth" d="M12 24V13a7 7 0 0 1 14 0v11"/></svg>`;
 }
 
 function toast(message, actionLabel, onAction) {
@@ -181,6 +188,7 @@ async function render(next, { animate = true } = {}) {
   }
   state = next;
   document.documentElement.dataset.theme = next.settings?.theme === 'nighttime' ? 'nighttime' : 'daytime';
+  document.documentElement.dataset.motion = next.settings?.motion || 'auto';
   motion.setMode(next.settings?.motion || 'auto');
 
   const ids = next.order.filter((id) => next.tracks[id]);
@@ -276,6 +284,23 @@ function renderLabels(s) {
   d.textContent = 'shed';
   d.title = activeId ? 'Park in the shed' : 'The locomotive is in the shed';
   labelsEl.appendChild(d);
+
+  if (reorderFlipPositions) {
+    const previous = reorderFlipPositions;
+    reorderFlipPositions = null;
+    requestAnimationFrame(() => {
+      labelsEl.querySelectorAll('.track-label-group').forEach((el) => {
+        const oldY = previous.get(el.dataset.id);
+        if (oldY == null) return;
+        const delta = oldY - el.getBoundingClientRect().top;
+        if (Math.abs(delta) < 1) return;
+        el.animate([{ transform: `translateY(${delta}px)` }, { transform: 'translateY(0)' }], {
+          duration: 280,
+          easing: 'cubic-bezier(0.16, 0.84, 0.32, 1)',
+        });
+      });
+    });
+  }
 }
 
 function renderFooter(s) {
@@ -331,25 +356,20 @@ function renderNow(s) {
   }
 
   const hasStop = !!cur.currentStop;
-  const snap = cur.snapshot?.tabs?.length || 0;
+  const stopMs = hasStop ? stopDurationMs(cur) : 0;
 
   nowEl.innerHTML = `
     <div class="eyebrow">now</div>
     <h1 class="now-name">${esc(cur.name)}</h1>
     ${cur.destination ? `<div class="now-dest">→ ${esc(cur.destination)}</div>` : ''}
+    ${stopMs ? `<div class="now-stop-duration"><span>current stop</span><strong>${esc(duration(stopMs))}</strong></div>` : ''}
     <button class="now-stop ${hasStop ? '' : 'is-empty'}" id="stop-btn" title="Click to edit">${
       hasStop ? esc(cur.currentStop) : 'What are you doing right now?'
     }</button>
-    ${
-      snap
-        ? `<div class="now-restore"><span>${snap} tab${snap === 1 ? '' : 's'} from when you left</span>
-           <button class="btn btn-quiet" data-act="restore">restore</button></div>`
-        : ''
-    }
     <div class="now-actions">
-      <button class="btn" data-act="switch">switch tracks</button>
-      <button class="btn" data-act="park">park</button>
-      <button class="btn btn-quiet" data-act="arrived">arrived</button>
+      <button class="btn action-button" data-act="switch">${actionLabel('switch', 'switch tracks')}</button>
+      <button class="btn action-button" data-act="park">${actionLabel('park', 'park')}</button>
+      <button class="btn btn-quiet action-button" data-act="arrived">${actionLabel('arrived', 'arrived')}</button>
     </div>`;
   wireNow();
 }
@@ -362,7 +382,6 @@ function wireNow() {
       if (act === 'park') openSwitchSheet('park');
       if (act === 'arrived') doArrive();
       if (act === 'new') openSwitchSheet('switch', { jumpToNew: true });
-      if (act === 'restore') doRestore();
     };
   });
   const sb = $('stop-btn');
@@ -534,10 +553,10 @@ function openSwitchSheet(mode = 'switch', { jumpToNew = false, initialDest = nul
         </button>
         ${
           cur
-            ? `<button class="dest" data-dest="__depot__">
+            ? `<button class="dest dest-park" data-dest="__depot__">
                  <span class="dest-lamp"></span>
-                 <span class="dest-body"><span class="dest-name">nowhere: park it</span>
-                 <span class="dest-stop">the locomotive goes back to the shed</span></span>
+                 <span class="dest-body"><span class="dest-name">nowhere: park it</span></span>
+                 ${shedIcon()}
                </button>`
             : ''
         }
@@ -574,7 +593,6 @@ function openSwitchSheet(mode = 'switch', { jumpToNew = false, initialDest = nul
           stopText,
           reason,
           stopPrefilled: !!prefill && stopText.trim() === prefill.trim(),
-          snapshot: cur ? await captureSnapshot() : null,
         };
       };
 
@@ -909,10 +927,8 @@ function openSettings() {
           <button class="btn btn-quiet" id="set-clear">erase everything</button>
         </div>
         <p class="privacy-note">
-          Train of Thought has no host permissions and no content scripts, so it cannot read any page you visit.
-          It sees tab hostnames and titles it is handed by Chrome. Hostnames are stored to learn track associations.
-          Full URLs are written only into a snapshot, only at the moment you deliberately leave a track, and are
-          deleted when that track arrives.
+          Train of Thought has no host permissions and no content scripts, so it cannot read page contents.
+          If you enable Learn where I work, it stores only tab hostnames to learn track associations. Full URLs are not stored.
         </p>
       </div>
     </details>
@@ -984,22 +1000,6 @@ async function doArrive() {
   } finally {
     arriving = false;
   }
-}
-
-async function doRestore() {
-  const cur = T.activeTrack(state);
-  const tabs = cur?.snapshot?.tabs || [];
-  if (!tabs.length) return;
-  await logEvent(EV.TABS_RESTORED, { id: cur.id, count: tabs.length });
-  for (const t of tabs) {
-    try {
-      await chrome.tabs.create({ url: t.url, active: false, pinned: t.pinned });
-    } catch {
-      /* a URL Chrome refuses to open should not abort the rest */
-    }
-  }
-  await T.editTrack(cur.id, {});
-  toast(`Reopened ${tabs.length} tab${tabs.length === 1 ? '' : 's'}.`);
 }
 
 function beginInlineRename(id) {
@@ -1098,6 +1098,18 @@ labelsEl.addEventListener('click', (e) => {
   if (depot && T.activeTrack(state)) openSwitchSheet('park');
 });
 
+labelsEl.addEventListener('pointerover', (e) => {
+  const group = e.target.closest?.('.track-label-group');
+  if (!group) return;
+  handles?.rows.get(group.dataset.id)?.g.classList.add('is-hovered');
+});
+
+labelsEl.addEventListener('pointerout', (e) => {
+  const group = e.target.closest?.('.track-label-group');
+  if (!group || group.contains(e.relatedTarget)) return;
+  handles?.rows.get(group.dataset.id)?.g.classList.remove('is-hovered');
+});
+
 let draggingTrackId = null;
 labelsEl.addEventListener('dragstart', (e) => {
   const handle = e.target.closest?.('.drag-handle');
@@ -1129,6 +1141,9 @@ labelsEl.addEventListener('drop', async (e) => {
   if (from < 0 || to < 0) return;
   const [moved] = ids.splice(from, 1);
   ids.splice(to, 0, moved);
+  reorderFlipPositions = new Map(
+    [...labelsEl.querySelectorAll('.track-label-group')].map((el) => [el.dataset.id, el.getBoundingClientRect().top])
+  );
   draggingTrackId = null;
   labelsEl.querySelectorAll('.is-drop-target, .is-dragging').forEach((el) => el.classList.remove('is-drop-target', 'is-dragging'));
   await T.reorder(ids);

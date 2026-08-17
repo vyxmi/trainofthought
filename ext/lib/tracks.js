@@ -103,7 +103,6 @@ export async function createTrack({ name, destination = '', board = true, leave 
       await leave_(state, {
         stopText: leave?.stopText || '',
         reason: leave?.reason || LEFT.SWITCHING,
-        snapshot: leave?.snapshot || null,
         stopPrefilled: !!leave?.stopPrefilled,
         toId: t.id,
       });
@@ -119,9 +118,8 @@ export async function createTrack({ name, destination = '', board = true, leave 
  * @param {string|null} toId  target track, or null for the depot
  * @param {string} stopText   where to pick the *departing* track back up
  * @param {string} reason     LEFT.*
- * @param {object|null} snapshot  tab snapshot for the departing track
  */
-export async function switchTo({ toId, stopText = '', reason = LEFT.SWITCHING, snapshot = null, stopPrefilled = false }) {
+export async function switchTo({ toId, stopText = '', reason = LEFT.SWITCHING, stopPrefilled = false }) {
   return update(async (state) => {
     // Check the destination against *this* freshly-read state before leaving.
     // A panel can hold a stale track list (a second window may have arrived or
@@ -129,7 +127,7 @@ export async function switchTo({ toId, stopText = '', reason = LEFT.SWITCHING, s
     // discovering the target is gone second would park the current track and
     // strand the locomotive pointing at it.
     if (toId && !boardable(state, toId)) return;
-    await leave_(state, { stopText, reason, snapshot, stopPrefilled, toId });
+    await leave_(state, { stopText, reason, stopPrefilled, toId });
     if (toId) await board_(state, toId, {});
     else {
       state.locomotive = { trackId: null, sinceAt: Date.now() };
@@ -144,19 +142,19 @@ function boardable(state, id) {
 }
 
 /** Leave the current track without boarding another. The locomotive goes to the depot. */
-export async function park({ stopText = '', reason = LEFT.SWITCHING, snapshot = null, stopPrefilled = false }) {
-  return switchTo({ toId: null, stopText, reason, snapshot, stopPrefilled });
+export async function park({ stopText = '', reason = LEFT.SWITCHING, stopPrefilled = false }) {
+  return switchTo({ toId: null, stopText, reason, stopPrefilled });
 }
 
 /** Resume is a switch whose *destination* is the interesting half. */
-export async function resume({ toId, stopText = '', reason = LEFT.SWITCHING, snapshot = null, stopPrefilled = false }) {
+export async function resume({ toId, stopText = '', reason = LEFT.SWITCHING, stopPrefilled = false }) {
   return update(async (state) => {
     if (!boardable(state, toId)) return;
     const target = state.tracks[toId];
     const away = target.leftAt ? Date.now() - target.leftAt : null;
     const wasStatus = target.status;
 
-    await leave_(state, { stopText, reason, snapshot, stopPrefilled, toId });
+    await leave_(state, { stopText, reason, stopPrefilled, toId });
     await board_(state, toId, {});
 
     await logEvent(EV.TRACK_RESUMED, {
@@ -168,7 +166,7 @@ export async function resume({ toId, stopText = '', reason = LEFT.SWITCHING, sna
   });
 }
 
-async function leave_(state, { stopText, reason, snapshot, stopPrefilled, toId = null }) {
+async function leave_(state, { stopText, reason, stopPrefilled, toId = null }) {
   const cur = activeTrack(state);
   if (!cur) return;
   const at = Date.now();
@@ -183,7 +181,6 @@ async function leave_(state, { stopText, reason, snapshot, stopPrefilled, toId =
   cur.leftBecause = reason;
   cur.leftAt = at;
   cur.readyAt = null;
-  if (snapshot) cur.snapshot = snapshot;
   touch(cur);
 
   addTrackEvent(
@@ -208,7 +205,6 @@ async function leave_(state, { stopText, reason, snapshot, stopPrefilled, toId =
     // nothing. If it was always edited, the prefill isn't earning its place.
     stopPrefilled: !!stopPrefilled,
     msOnTrack: cur.msOnTrack,
-    tabsCaptured: snapshot?.tabs?.length || 0,
   });
   if (stopPrefilled) await logEvent(EV.STOP_ACCEPTED, { id: cur.id });
 }
@@ -305,7 +301,6 @@ export async function arrive(id) {
     const previousStatus = t.status;
     t.status = STATUS.ARRIVED;
     t.arrivedAt = at;
-    t.snapshot = null; // don't hoard tab URLs for finished work
     touch(t);
     addTrackEvent(t, 'status', { from: previousStatus, to: STATUS.ARRIVED }, at);
     addTrackEvent(t, 'arrived', { totalActiveMs: t.msOnTrack, startedAt: t.createdAt }, at);

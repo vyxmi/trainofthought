@@ -6,6 +6,7 @@
    ========================================================================== */
 
 :root {
+  color-scheme: light;
   --paper: #f2efe7;
   --paper-2: #fbf9f4;
   --paper-3: #e9e5da;
@@ -39,15 +40,16 @@
 }
 
 [data-theme='nighttime'] {
+    color-scheme: dark;
     --paper: #131210;
     --paper-2: #1b1a16;
     --paper-3: #232019;
-    --edge: #3c372f;
-    --edge-soft: #302c25;
+    --edge: #49433a;
+    --edge-soft: #373229;
 
     --ink: #f7f3ea;
     --ink-2: #c8c1b4;
-    --ink-3: #9b9384;
+    --ink-3: #aaa294;
 
     --rail: #4e493e;
     --rail-strong: #d2cabb;
@@ -221,6 +223,24 @@ textarea:focus-visible,
   font-style: italic;
 }
 
+.now-stop-duration {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 8px;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.now-stop-duration strong {
+  color: var(--ink-2);
+  font-size: 9.5px;
+  letter-spacing: 0.03em;
+}
+
 textarea.now-stop {
   font-family: var(--font-note);
   border-color: var(--accent);
@@ -235,16 +255,6 @@ textarea.now-stop {
   gap: 6px;
   margin-top: 11px;
   flex-wrap: wrap;
-}
-
-.now-restore {
-  margin-top: 9px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--ink-3);
-  display: flex;
-  align-items: center;
-  gap: 7px;
 }
 
 /* --- buttons ------------------------------------------------------------ */
@@ -300,6 +310,29 @@ button {
 .btn:disabled {
   opacity: 0.45;
   cursor: default;
+}
+
+.action-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.action-icon {
+  display: inline-flex;
+  width: 14px;
+  height: 12px;
+}
+
+.action-icon svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* --- yard --------------------------------------------------------------- */
@@ -408,7 +441,9 @@ button {
   min-width: 0;
   height: 24px;
   border-radius: 5px;
-  transition: background 120ms ease, transform 120ms ease;
+  transition: background 140ms ease, box-shadow 160ms ease, opacity 160ms ease,
+    transform 220ms cubic-bezier(0.16, 0.84, 0.32, 1);
+  will-change: transform;
 }
 
 .track-label-group:hover,
@@ -417,11 +452,15 @@ button {
 }
 
 .track-label-group.is-dragging {
-  opacity: 0.48;
+  opacity: 0.62;
+  transform: scale(0.985);
+  box-shadow: var(--shadow);
 }
 
 .track-label-group.is-drop-target {
+  background: color-mix(in srgb, var(--accent) 8%, var(--paper-3));
   box-shadow: 0 -2px 0 var(--accent);
+  transform: translateY(1px);
 }
 
 .drag-handle,
@@ -629,11 +668,35 @@ button {
   opacity: 0.65;
 }
 
+.row.is-hovered .rail,
+.row:focus-within .rail {
+  stroke: var(--rail-strong);
+  stroke-width: 2.7;
+}
+
+.row.is-hovered .sleepers,
+.row:focus-within .sleepers {
+  stroke: var(--rail);
+  opacity: 0.78;
+}
+
+.rail-svg:not(.is-moving) .row.is-active .sleepers {
+  animation: active-track-drift 8s linear infinite;
+}
+
+@keyframes active-track-drift {
+  to {
+    stroke-dashoffset: -11px;
+  }
+}
+
 .blade-arm {
   fill: none;
   stroke: var(--rail);
   stroke-width: 2.2;
   stroke-linecap: round;
+  transform-box: fill-box;
+  transform-origin: left center;
   transition: stroke 120ms ease;
 }
 
@@ -721,6 +784,16 @@ button {
   animation: rod-pump 260ms ease-in-out infinite alternate;
 }
 
+.rail-svg:not(.is-moving) .loco:not(.at-depot) .loco-idle {
+  animation: locomotive-idle 2.8s ease-in-out infinite;
+}
+
+.rail-svg:not(.is-moving) .loco:not(.at-depot) .rod {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: idle-rod 2.8s ease-in-out infinite;
+}
+
 @keyframes wheel-roll {
   to {
     stroke-dashoffset: -10;
@@ -730,6 +803,18 @@ button {
 @keyframes rod-pump {
   to {
     transform: translateX(1.6px) translateY(-0.5px);
+  }
+}
+
+@keyframes locomotive-idle {
+  50% {
+    transform: translateY(-0.35px);
+  }
+}
+
+@keyframes idle-rod {
+  50% {
+    transform: translateX(0.45px);
   }
 }
 
@@ -770,7 +855,9 @@ button {
   fill: var(--sig-off);
   stroke: var(--paper);
   stroke-width: 1;
-  transition: fill 220ms ease;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: fill 220ms ease, stroke 120ms ease, transform 140ms cubic-bezier(0.16, 0.84, 0.32, 1);
 }
 
 .sig-glow {
@@ -781,6 +868,11 @@ button {
 
 .signal:hover .sig-lamp {
   stroke: var(--ink-3);
+  transform: scale(1.12);
+}
+
+.signal:active .sig-lamp {
+  transform: scale(0.96);
 }
 
 .signal.is-changing .sig-lamp {
@@ -859,6 +951,7 @@ button {
   fill: var(--paper-2);
   stroke: var(--ink-3);
   stroke-width: 1.4;
+  transition: stroke 120ms ease, transform 140ms cubic-bezier(0.16, 0.84, 0.32, 1);
 }
 
 .mk-dot {
@@ -870,10 +963,15 @@ button {
 
 .marker:hover .mk-plate {
   stroke: var(--accent);
+  transform: translateY(-1px);
 }
 
 .marker:hover .mk-dot {
   stroke: var(--accent);
+}
+
+.marker:active .mk-plate {
+  transform: translateY(0.5px);
 }
 
 .marker.is-hidden {
@@ -1272,11 +1370,18 @@ textarea::placeholder {
   cursor: pointer;
   color: inherit;
   font: inherit;
+  transition: background 120ms ease, border-color 120ms ease, box-shadow 150ms ease,
+    transform 120ms cubic-bezier(0.16, 0.84, 0.32, 1);
 }
 
 .dest:hover {
   background: var(--paper-3);
   border-color: var(--edge);
+  transform: translateY(-1px);
+}
+
+.dest:active {
+  transform: translateY(0);
 }
 
 .dest.is-selected {
@@ -1343,6 +1448,40 @@ textarea::placeholder {
   flex: 0 0 auto;
 }
 
+.dest-park {
+  min-height: 48px;
+}
+
+.dest-shed {
+  width: 34px;
+  height: 24px;
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+.dest-shed-floor,
+.dest-shed-shell {
+  fill: none;
+  stroke: var(--rail);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+.dest-shed-shell {
+  fill: var(--paper-3);
+}
+
+.dest-shed-mouth {
+  fill: var(--paper-2);
+  stroke: var(--rail);
+  stroke-width: 1.2;
+}
+
+.dest-park:hover .dest-shed-shell,
+.dest-park.is-selected .dest-shed-shell {
+  stroke: var(--ink-2);
+}
+
 .sheet-actions {
   display: flex;
   gap: 6px;
@@ -1372,6 +1511,8 @@ textarea::placeholder {
   padding: 2px 4px !important;
   border-color: transparent !important;
   background: transparent !important;
+  color: var(--ink) !important;
+  caret-color: var(--accent);
   font-family: var(--font-ui) !important;
   font-size: 21px !important;
   font-weight: 680;
@@ -1411,16 +1552,21 @@ textarea::placeholder {
 .track-stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(94px, 1fr));
-  gap: 6px;
+  gap: 0;
   margin-bottom: 14px;
+  padding: 8px 0;
+  border-top: 1px dashed var(--edge);
+  border-bottom: 1px dashed var(--edge);
 }
 
 .track-stats > div {
   min-width: 0;
-  padding: 8px;
-  border: 1px solid var(--edge-soft);
-  border-radius: 6px;
-  background: var(--paper);
+  padding: 2px 10px 2px 0;
+}
+
+.track-stats > div + div {
+  padding-left: 10px;
+  border-left: 1px solid var(--edge-soft);
 }
 
 .track-stats span,
@@ -1438,9 +1584,9 @@ textarea::placeholder {
 }
 
 .track-stats strong {
-  color: var(--ink-2);
+  color: var(--ink);
   font-size: 10.5px;
-  font-weight: 560;
+  font-weight: 580;
 }
 
 .track-history {
@@ -1948,6 +2094,13 @@ select {
 }
 
 /* --- reduced motion ----------------------------------------------------- */
+
+[data-motion='off'] .rail-svg *,
+[data-motion='off'] .event-marker,
+[data-motion='off'] .track-label-group {
+  animation: none !important;
+  transition-duration: 0.001ms !important;
+}
 
 @media (prefers-reduced-motion: reduce) {
   *,

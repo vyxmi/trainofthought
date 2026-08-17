@@ -8,13 +8,11 @@ Train of Thought is a Chrome extension for switching between trains of thought a
 
 Train of Thought stores information the user enters, including track names, destinations, Stops, Notes, status, manual order, settings, and local history events. It also stores timestamps and active ride durations so Track Details and Arrivals can show when a track started and finished and how long the locomotive was active on it.
 
-When the user deliberately leaves a track, Train of Thought may save a restorable snapshot containing the URLs and titles of tabs in the current window. The snapshot is stored only on the device and is deleted when that track is marked arrived. Users can choose whether to restore these tabs.
-
 Optional context observation is off by default. If the user explicitly enables **Learn where I work** in Settings, Train of Thought records hostnames visited while a track is active so it can learn which sites are associated with that track. It does not read or store page contents. Observation can be disabled at any time.
 
 ## How information is used
 
-The stored information is used only to provide Train of Thought's user-facing features: maintaining tracks, preserving return points, restoring tabs at the user's request, learning optional local site-to-track associations, and allowing the user to inspect a local usage log.
+The stored information is used only to provide Train of Thought's user-facing features: maintaining tracks, preserving return points, learning optional local site-to-track associations, and allowing the user to inspect a local usage log.
 
 ## Sharing, selling, and transmission
 

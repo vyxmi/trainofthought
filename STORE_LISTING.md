@@ -1,4 +1,4 @@
-# Chrome Web Store listing: Train of Thought v0.2.0
+# Chrome Web Store listing: Train of Thought v0.2.1
 
 ## Product details
 
@@ -12,7 +12,7 @@
 
 Train of Thought is a calm Chrome side panel for switching between trains of thought without losing your place.
 
-Lay a track for each project or thread. Keep one locomotive, your attention, on exactly one track at a time. Switch freely, or leave an optional Stop describing where to pick the work back up. When you return, that cue and an optional restorable tab snapshot are waiting for you.
+Lay a track for each project or thread. Keep one locomotive, your attention, on exactly one track at a time. Switch freely, or leave an optional Stop describing where to pick the work back up. When you return, that cue is waiting for you.
 
 Train of Thought includes:
 
@@ -22,7 +22,6 @@ Train of Thought includes:
 - Expandable Track Details with switches, Stops, Notes, ride durations, status changes, and arrival
 - Arrivals history with start time, arrival time, total active time, and full Track history
 - Inline track rename, drag to reorder, and recoverable Delete for unwanted tracks
-- Optional tab snapshots captured only when you leave a track
 - Manual ready signals for work that is waiting on someone or something else
 - Daytime and nighttime themes, reduced-motion support, and keyboard shortcuts
 - Local export and erase controls
@@ -35,9 +34,9 @@ Privacy is structural: there is no account, server, advertising, or remote code.
 
 **sidePanel justification:** Displays Train of Thought's primary interface in Chrome's side panel so it can stay accessible alongside the user's work.
 
-**storage justification:** Stores tracks, settings, optional tab snapshots, optional local hostname associations, and a local usage log on the user's device.
+**storage justification:** Stores tracks, settings, optional local hostname associations, and a local usage log on the user's device.
 
-**tabs justification:** Reads tab titles and URLs only to capture a restorable snapshot when the user deliberately leaves a track, and reads active-tab hostnames only after the user explicitly enables optional context learning. It also restores saved tabs only when the user requests it.
+**tabs justification:** Reads active-tab URLs only after the user explicitly enables optional context learning, immediately reducing them to hostnames stored locally. It does not store full URLs or page contents.
 
 **alarms justification:** Periodically flushes opted-in hostname association counts from memory to local Chrome storage without continuous background execution.
 

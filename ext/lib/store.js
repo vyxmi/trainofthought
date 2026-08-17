@@ -13,7 +13,7 @@
  *   ty_events — local analytics ring buffer (append-only, capped, never leaves disk)
  */
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export const K_STATE = 'ty';
 export const K_OBS = 'ty_obs';
@@ -86,7 +86,6 @@ export function defaultState() {
       // after an explicit opt-in in Settings.
       observe: false,
       motion: 'auto', // 'auto' respects prefers-reduced-motion | 'full' | 'off'
-      restoreTabs: 'ask', // 'ask' | 'never'
     },
     onboardedAt: null,
   };
@@ -116,8 +115,6 @@ export function newTrack({ name, destination = '' }) {
      *  written by the service worker every minute, and a worker write of the
      *  whole `ty` blob would clobber whatever the panel was mid-way through
      *  writing. They live in `ty_obs`, which only the worker writes. */
-    /** Explicit tab snapshot, captured only at the moment of leaving. */
-    snapshot: null,
     /** Cumulative ms the locomotive has spent on this track. */
     msOnTrack: 0,
     /** Chronological user-facing history for this track. */
@@ -202,6 +199,13 @@ function migrate(s) {
       }
     }
     s.schemaVersion = 2;
+  }
+  // v2 → v3: remove tab snapshots. They added privacy and interface weight
+  // without strengthening the core stop-and-resume loop.
+  if (s.schemaVersion < 3) {
+    for (const t of Object.values(s.tracks || {})) delete t.snapshot;
+    if (s.settings) delete s.settings.restoreTabs;
+    s.schemaVersion = 3;
   }
   // Fill any gaps introduced by partial writes.
   return { ...defaultState(), ...s, settings: { ...defaultState().settings, ...(s.settings || {}) } };
@@ -296,7 +300,6 @@ export const EV = {
   TRACK_READY: 'track_ready',
   STOP_EDITED: 'stop_edited',
   STOP_ACCEPTED: 'stop_accepted', // prefilled stop accepted unchanged — friction signal
-  TABS_RESTORED: 'tabs_restored',
   PANEL_OPENED: 'panel_opened',
   OBSERVE_DISABLED: 'observe_disabled',
 };

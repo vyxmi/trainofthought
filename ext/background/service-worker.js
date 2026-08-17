@@ -13,9 +13,8 @@
  * build junction detection later is being recorded now; nothing acts on it.
  *
  * Privacy posture (spec §20): the extension has no host permissions and no content
- * scripts. It cannot read page contents. It stores hostnames — never full URLs,
- * never page titles — for association learning. Full URLs are written exactly once,
- * into an explicit snapshot, at the moment you deliberately leave a track.
+ * scripts. It cannot read page contents. It stores hostnames — never full URLs
+ * or page titles — for optional association learning.
  */
 
 import { readState, updateObs } from '../lib/store.js';

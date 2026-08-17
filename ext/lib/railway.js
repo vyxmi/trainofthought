@@ -200,23 +200,25 @@ function el(name, attrs = {}, children = []) {
  */
 export function locomotive() {
   return el('g', { class: 'loco', 'aria-hidden': 'true' }, [
-    el('g', { class: 'loco-shadow' }, [el('ellipse', { cx: 0, cy: 1.2, rx: 14, ry: 2 })]),
-    // wheels
-    el('circle', { class: 'wheel', cx: -8, cy: -3.4, r: 3.4 }),
-    el('circle', { class: 'wheel', cx: -0.5, cy: -3.4, r: 3.4 }),
-    el('circle', { class: 'wheel wheel-driver', cx: 7.8, cy: -4, r: 4 }),
-    el('path', { class: 'rod', d: 'M -8,-3.4 L 7.8,-4' }),
-    // frame
-    el('rect', { class: 'body frame', x: -13.5, y: -9, width: 27, height: 3, rx: 0.8 }),
-    // hood
-    el('rect', { class: 'body hood', x: -13, y: -15.2, width: 16, height: 6.4, rx: 1.6 }),
-    el('rect', { class: 'body stack', x: -9.6, y: -17.2, width: 3, height: 2.4, rx: 0.7 }),
-    // cab
-    el('rect', { class: 'body cab', x: 2.4, y: -19, width: 10.8, height: 10.2, rx: 1.8 }),
-    el('rect', { class: 'glass', x: 4.1, y: -17.1, width: 7.2, height: 4.4, rx: 0.9 }),
-    // lamp
-    el('circle', { class: 'lamp', cx: -13.4, cy: -12, r: 1.4 }),
-    el('path', { class: 'beam', d: 'M -14.2,-12 L -26,-15.5 L -26,-8.5 Z' }),
+    el('g', { class: 'loco-idle' }, [
+      el('g', { class: 'loco-shadow' }, [el('ellipse', { cx: 0, cy: 1.2, rx: 14, ry: 2 })]),
+      // wheels
+      el('circle', { class: 'wheel', cx: -8, cy: -3.4, r: 3.4 }),
+      el('circle', { class: 'wheel', cx: -0.5, cy: -3.4, r: 3.4 }),
+      el('circle', { class: 'wheel wheel-driver', cx: 7.8, cy: -4, r: 4 }),
+      el('path', { class: 'rod', d: 'M -8,-3.4 L 7.8,-4' }),
+      // frame
+      el('rect', { class: 'body frame', x: -13.5, y: -9, width: 27, height: 3, rx: 0.8 }),
+      // hood
+      el('rect', { class: 'body hood', x: -13, y: -15.2, width: 16, height: 6.4, rx: 1.6 }),
+      el('rect', { class: 'body stack', x: -9.6, y: -17.2, width: 3, height: 2.4, rx: 0.7 }),
+      // cab
+      el('rect', { class: 'body cab', x: 2.4, y: -19, width: 10.8, height: 10.2, rx: 1.8 }),
+      el('rect', { class: 'glass', x: 4.1, y: -17.1, width: 7.2, height: 4.4, rx: 0.9 }),
+      // lamp
+      el('circle', { class: 'lamp', cx: -13.4, cy: -12, r: 1.4 }),
+      el('path', { class: 'beam', d: 'M -14.2,-12 L -26,-15.5 L -26,-8.5 Z' }),
+    ]),
   ]);
 }
 

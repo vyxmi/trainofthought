@@ -111,7 +111,7 @@ Then in `ext/sidepanel/index.html`, before `panel.js`:
 - **No host permissions. No content scripts.** The extension cannot read any page you visit, at all.
 - **Observation is off by default.** Enabling it in Settings is an explicit opt-in.
 - It sees tab hostnames and titles that Chrome hands it. Only **hostnames** are stored, for association learning.
-- Full URLs are written in exactly one place: a snapshot, taken only when you deliberately leave a track, deleted when that track arrives.
+- Full URLs are never stored. Optional context learning immediately reduces active-tab URLs to hostnames.
 - Everything is local. No account, no server, no network code.
 - Settings → toggle observation off, export everything, or erase everything.
 

@@ -9,19 +9,18 @@
  *   markReturn    — "something was left behind, deliberately, right there"
  *   resumeTo      — "you are back, and this is the spot"
  *
- * There is no idle animation, no ambient drift, nothing that moves while you are
- * reading. If a movement isn't answering one of those questions it doesn't ship.
- * Total budget for the signature switch is under one second, because past that
- * the animation stops being feedback and starts being a wait.
+ * CSS adds only a sub-pixel idle vibration and a very slow active-rail drift so
+ * the current track feels alive without competing with the semantic movements.
+ * Total budget for the signature switch stays around one second.
  */
 
 import { followPath, place, drawPath, tween, cancel, setMotionMode, motionDisabled } from './anim.js';
 import { switchPath, locomotive, GEO } from './railway.js';
 
-const BLADE_MS = 150;
-const RUN_MS = 620;
+const BLADE_MS = 170;
+const RUN_MS = 680;
 const LAY_MS = 520;
-const MARKER_MS = 260;
+const MARKER_MS = 300;
 
 export class Motion {
   constructor(svg) {
