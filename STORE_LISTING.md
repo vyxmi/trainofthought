@@ -1,4 +1,4 @@
-# Chrome Web Store listing: Train of Thought v0.2.3
+# Chrome Web Store listing: Train of Thought v0.3.0
 
 ## Product details
 
@@ -16,12 +16,12 @@ Lay a track for each project or thread. Keep one locomotive, your attention, on 
 
 Train of Thought includes:
 
-- A calm, scrollable yard for three to ten active tracks with persistent manual ordering
-- Optional Stop markers for meaningful return points, while every switch is preserved in Track history
-- Notes you can add to inactive tracks without changing your current track
-- Expandable Track Details with switches, Stops, Notes, ride durations, status changes, and arrival
+- A calm, scrollable yard for up to ten active tracks with stable fixed ordering
+- Multiple historical Stop markers with "continue from here" and a quieter passed state
+- Resolvable Notes you can add without changing your current track
+- Railway-style Track Details with meaningful rides, Stops, Notes, time-away, switches, resumes, and arrival episodes
 - Arrivals history with start time, arrival time, total active time, and full Track history
-- Inline track rename, drag to reorder, and recoverable Delete for unwanted tracks
+- Inline editing for the active track's name, destination, and current stop, plus recoverable Delete
 - Manual ready signals for work that is waiting on someone or something else
 - Daytime and nighttime themes, reduced-motion support, and keyboard shortcuts
 - Local export and erase controls
@@ -66,6 +66,6 @@ No account or credentials are required.
 1. Click the toolbar icon to open the Train of Thought side panel.
 2. Enter a track name and choose **lay track**.
 3. Choose **switch tracks**, optionally leave a pickup note, and create or select another track.
-4. Hover an inactive track to add a Note, or click a Stop or Note marker to open Track Details.
+4. Hover a track to add a Note, or click a Stop or Note marker to inspect, resolve, or continue from it.
 5. Select the original track to resume it, or mark a track Arrived to move it into Arrivals.
 6. Open Settings to review local-only data controls and the optional, off-by-default hostname observation setting.

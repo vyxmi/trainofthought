@@ -2,7 +2,7 @@
 
 One locomotive, many tracks. A Chrome side panel for switching between trains of thought without losing them.
 
-**V1 scope:** the core loop: lay a track, work, switch, resume, park, and arrive. The yard supports up to ten manually ordered active tracks, lightweight Stops and Notes, per-track history, active ride durations, and an Arrivals archive. Optional context observation is off by default and runs only after the user opts in from Settings.
+**V1 scope:** the core loop: lay a track, work, switch, resume, park, and arrive. The yard supports up to ten fixed-order active tracks, multiple Stops and Notes, compact cognitive timelines, active ride durations, and an Arrivals archive. Optional context observation is off by default and runs only after the user opts in from Settings.
 
 ---
 
@@ -28,14 +28,14 @@ No build step. Edit a file, hit the reload arrow on the extensions page, reopen 
 | **Current stop** | An optional re-entry cue describing where to pick the work back up. Leaving it blank still records the switch but does not place a Stop marker in the yard. |
 | **Destination** | Optional. The stable goal. Never required to create a track. |
 | **Signal** | The track's state, at the entrance. Tap it to mark a track ready. |
-| **Stop** | A marker left only when you switch or park with a meaningful pickup note. Clicking it opens that event in Track Details. |
-| **Note** | A short thought added to an inactive track without moving the locomotive. Notes use their own marker and history event. |
+| **Stop** | A historical marker left when you switch or park with a meaningful pickup note. Continuing from it marks it passed without deleting it. |
+| **Note** | A short thought added to any live track without moving the locomotive. Notes can be resolved and remain as quiet history. |
 | **Shed** | Where the locomotive sits when your attention is not on any track. Park sends it here. |
 | **Arrivals** | Completed tracks, including start and arrival times, total active time, and full Track history. |
 
 Track status and Stops are separate. States are `active` · `parked` · `waiting` · `ai_working` · `ready` · `arrived`. A Stop is an event marker, not a status.
 
-Track order is always manual. Rename a title inline, drag its handle to move it, and use Delete in Track Details only for unwanted tracks. Delete offers Undo; Arrived is the normal completion path.
+Track order stays fixed where tracks were laid; reorder is intentionally not shipped yet. Edit the active track's name, destination, and current stop inline in the top area. Use Delete in Track Details only for unwanted tracks. Delete offers Undo; Arrived is the normal completion path.
 
 ---
 
@@ -119,7 +119,7 @@ Then in `ext/sidepanel/index.html`, before `panel.js`:
 
 ## Reading the results
 
-Settings → **export usage log** gives you the raw local event stream. Track Details separately contains the user-facing chronological history for each track, including switches that did not create Stops, Notes, rides, status changes, and arrival.
+Settings → **export usage log** gives you the raw local event stream. Track Details separately turns each track's chronological history into a railway timeline of meaningful episodes: rides, time away, switches, Stops, Notes, resumes, and arrival.
 
 **Does the loop work at all?**
 - `track_created` ordinal ≥ 2: did they build a second track, or is this a single-project tool?
@@ -159,4 +159,4 @@ Junction detection is the obvious missing piece and it is missing on purpose. It
 
 Build it when, and only when, the export above says people are actually resuming what they park.
 
-Also not built, per spec §29: task management, calendar, Pomodoro, blocking, scoring, collaboration, agent integrations, automatic decomposition, an elaborate railway map.
+Also not built, per spec §29: branches, countdowns, timeboxing, checklists, task management, calendar, Pomodoro, blocking, scoring, collaboration, agent integrations, automatic decomposition, or an elaborate railway map.
