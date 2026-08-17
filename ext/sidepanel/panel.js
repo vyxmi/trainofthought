@@ -11,7 +11,6 @@
 
 import {
   STATUS,
-  STATUS_LABEL,
   LEFT,
   LEFT_LABEL,
   EV,
@@ -40,11 +39,10 @@ let state = null;
 let layout = null;
 let handles = null;
 let shapeKey = '';
-let editingStop = false;
+let editingNowField = null;
 let skipNextAnim = false;
 let toastTimer = 0;
 let newMarkerEventIds = new Set();
-let reorderFlipPositions = null;
 
 const motion = new Motion(svgEl);
 
@@ -59,7 +57,7 @@ function statusWord(t) {
   if (!t) return '';
   switch (t.status) {
     case STATUS.ACTIVE:
-      return 'on track';
+      return `on track · ${duration(Date.now() - (state?.locomotive?.sinceAt || Date.now()))}`;
     case STATUS.READY:
       return 'ready';
     case STATUS.WAITING:
@@ -113,32 +111,6 @@ function dateTime(at) {
     hour: 'numeric',
     minute: '2-digit',
   }).format(new Date(at));
-}
-
-function totalActiveMs(track, s = state) {
-  let total = track?.msOnTrack || 0;
-  if (track && s?.locomotive?.trackId === track.id && s.locomotive.sinceAt) {
-    total += Math.max(0, Date.now() - s.locomotive.sinceAt);
-  }
-  return total;
-}
-
-function stopDurationMs(track) {
-  if (!track?.leftAt) return 0;
-  const end = track.status === STATUS.ACTIVE && track.lastActiveAt > track.leftAt ? track.lastActiveAt : Date.now();
-  return Math.max(0, end - track.leftAt);
-}
-
-function stopDurationLabel(ms) {
-  const minutes = Math.max(1, Math.round(Math.max(0, Number(ms) || 0) / 60_000));
-  if (minutes < 60) return `${minutes} MIN`;
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  return rest ? `${hours} HR ${rest} MIN` : `${hours} HR`;
-}
-
-function latestEvent(track, type) {
-  return [...(track?.events || [])].reverse().find((event) => event.type === type) || null;
 }
 
 const ACTION_ICONS = {
@@ -222,7 +194,7 @@ async function render(next, { animate = true } = {}) {
     }
   }
   renderLabels(next);
-  if (!editingStop) renderNow(next);
+  if (!editingNowField) renderNow(next);
   renderFooter(next);
 
   const consumed = skipNextAnim;
@@ -245,36 +217,40 @@ function renderLabels(s) {
     group.style.top = `${slot.labelY}px`;
     group.style.width = `${Math.max(120, layout.width - slot.labelX - 30)}px`;
     group.innerHTML = `
-      <button class="drag-handle" draggable="true" data-id="${esc(t.id)}" aria-label="Reorder ${esc(t.name)}" title="Drag to reorder">
-        <span></span><span></span><span></span>
-      </button>
       <button class="track-title" data-id="${esc(t.id)}" title="${t.id === activeId ? 'Current track' : `Switch to ${esc(t.name)}`}">
         <span class="lbl-name">${esc(t.name)}</span>
         <span class="lbl-status">${esc(statusWord(t))}</span>
       </button>
       <span class="track-tools">
-        ${t.id !== activeId ? `<button class="add-note" data-id="${esc(t.id)}" title="Add a note">+ note</button>` : ''}
+        <button class="add-note" data-id="${esc(t.id)}" title="Add a note">+ note</button>
         <button class="details-track" data-id="${esc(t.id)}" aria-label="Open details for ${esc(t.name)}" title="Track details">•••</button>
       </span>`;
     labelsEl.appendChild(group);
 
-    const stopEvent = t.id !== activeId && t.leftAt && t.currentStop?.trim() ? latestEvent(t, 'stop') : null;
-    const noteEvent = t.id !== activeId ? latestEvent(t, 'note') : null;
-    const markerEvents = [stopEvent, noteEvent].filter(Boolean);
+    const markerEvents = (t.events || [])
+      .filter((event) => event.type === 'stop' || event.type === 'note')
+      .slice(-4);
     if (markerEvents.length) {
+      const newestRelevant = [...markerEvents]
+        .reverse()
+        .find((event) => (event.type === 'stop' ? !event.passedAt : !event.resolvedAt));
+      const newestId = (newestRelevant || markerEvents.at(-1)).id;
       const markers = document.createElement('div');
       markers.className = 'event-markers';
-      markers.style.left = `${slot.platformX + (stopEvent ? 15 : 0)}px`;
-      markers.style.top = `${slot.y - 31}px`;
+      markers.style.left = `${slot.platformX + 18}px`;
+      markers.style.top = `${slot.y + 5}px`;
       markers.style.width = `${Math.max(70, layout.width - slot.platformX - 46)}px`;
       markers.innerHTML = markerEvents
         .map(
           (event) => `
-          <button class="event-marker marker-${event.type} ${newMarkerEventIds.has(event.id) ? 'is-new' : ''}"
-                  data-id="${esc(t.id)}" data-event-id="${esc(event.id)}" title="Open in Track Details">
+          <button class="event-marker marker-${event.type} ${event.id === newestId ? 'is-latest' : 'is-compact'}
+                  ${event.passedAt ? 'is-passed' : ''} ${event.resolvedAt ? 'is-resolved' : ''}
+                  ${newMarkerEventIds.has(event.id) ? 'is-new' : ''}"
+                  data-id="${esc(t.id)}" data-event-id="${esc(event.id)}"
+                  aria-label="Inspect ${event.type}: ${esc(event.text || '')}">
             <span class="event-icon" aria-hidden="true"></span>
-            <span class="event-kind">${event.type}</span>
-            <span class="event-text">${esc(event.text || '')}</span>
+            <span class="event-body"><span class="event-text">${esc(event.text || '')}</span>
+            <time>${esc(dateTime(event.at))}</time></span>
           </button>`
         )
         .join('');
@@ -291,23 +267,6 @@ function renderLabels(s) {
   d.textContent = 'shed';
   d.title = activeId ? 'Park in the shed' : 'The locomotive is in the shed';
   labelsEl.appendChild(d);
-
-  if (reorderFlipPositions) {
-    const previous = reorderFlipPositions;
-    reorderFlipPositions = null;
-    requestAnimationFrame(() => {
-      labelsEl.querySelectorAll('.track-label-group').forEach((el) => {
-        const oldY = previous.get(el.dataset.id);
-        if (oldY == null) return;
-        const delta = oldY - el.getBoundingClientRect().top;
-        if (Math.abs(delta) < 1) return;
-        el.animate([{ transform: `translateY(${delta}px)` }, { transform: 'translateY(0)' }], {
-          duration: 280,
-          easing: 'cubic-bezier(0.16, 0.84, 0.32, 1)',
-        });
-      });
-    });
-  }
 }
 
 function renderFooter(s) {
@@ -363,14 +322,14 @@ function renderNow(s) {
   }
 
   const hasStop = !!cur.currentStop;
-  const stopMs = hasStop ? stopDurationMs(cur) : 0;
 
   nowEl.innerHTML = `
-    <div class="eyebrow now-current"><span>current stop</span><i class="eyebrow-line"></i>${
-      stopMs ? `<strong>${esc(stopDurationLabel(stopMs))}</strong>` : ''
-    }</div>
-    <h1 class="now-name">${esc(cur.name)}</h1>
-    ${cur.destination ? `<div class="now-dest">→ ${esc(cur.destination)}</div>` : ''}
+    <div class="eyebrow now-current"><span>current stop</span><i class="eyebrow-line"></i>
+      <strong>${esc(statusWord(cur))}</strong></div>
+    <button class="now-name now-inline-edit" id="now-name-btn" title="Edit track name">${esc(cur.name)}</button>
+    <button class="now-dest now-inline-edit ${cur.destination ? '' : 'is-empty'}" id="now-dest-btn" title="Edit destination">${
+      cur.destination ? `→ ${esc(cur.destination)}` : '+ add destination'
+    }</button>
     <button class="now-stop ${hasStop ? '' : 'is-empty'}" id="stop-btn" title="Click to edit">${
       hasStop ? esc(cur.currentStop) : 'What are you doing right now?'
     }</button>
@@ -393,7 +352,11 @@ function wireNow() {
     };
   });
   const sb = $('stop-btn');
-  if (sb) sb.onclick = beginEditStop;
+  if (sb) sb.onclick = () => beginNowEdit('stop');
+  const name = $('now-name-btn');
+  if (name) name.onclick = () => beginNowEdit('name');
+  const destination = $('now-dest-btn');
+  if (destination) destination.onclick = () => beginNowEdit('destination');
 }
 
 // ---------------------------------------------------------------------------
@@ -432,45 +395,65 @@ async function animateDiff(before, next, rebuilt, allow) {
 }
 
 // ---------------------------------------------------------------------------
-// Inline stop editing
+// Inline current-track editing
 // ---------------------------------------------------------------------------
 
-function beginEditStop() {
+function beginNowEdit(field) {
   const cur = T.activeTrack(state);
   if (!cur) return;
-  const btn = $('stop-btn');
-  if (!btn) return;
+  const config = {
+    name: { id: 'now-name-btn', value: cur.name, placeholder: 'Track name', className: 'now-name now-inline-input' },
+    destination: {
+      id: 'now-dest-btn',
+      value: cur.destination || '',
+      placeholder: 'Optional destination',
+      className: 'now-dest now-inline-input',
+    },
+    stop: { id: 'stop-btn', value: cur.currentStop || '', placeholder: 'What are you doing right now?', className: 'now-stop' },
+  }[field];
+  const button = config && $(config.id);
+  if (!button) return;
 
-  editingStop = true;
-  const ta = document.createElement('textarea');
-  ta.className = 'now-stop';
-  ta.value = cur.currentStop || '';
-  ta.rows = 1;
-  ta.placeholder = 'Write results section';
-  btn.replaceWith(ta);
-  ta.focus();
-  ta.setSelectionRange(ta.value.length, ta.value.length);
-  autosize(ta);
-  ta.oninput = () => autosize(ta);
+  editingNowField = field;
+  const input = document.createElement(field === 'stop' ? 'textarea' : 'input');
+  if (field !== 'stop') input.type = 'text';
+  input.className = config.className;
+  input.value = config.value;
+  input.placeholder = config.placeholder;
+  input.maxLength = field === 'name' ? 80 : 180;
+  if (field === 'stop') input.rows = 1;
+  button.replaceWith(input);
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+  if (field === 'stop') {
+    autosize(input);
+    input.oninput = () => autosize(input);
+  }
 
   const commit = async (save) => {
-    if (!editingStop) return;
-    editingStop = false;
-    const val = ta.value;
-    if (save) await T.setStop(cur.id, val);
+    if (editingNowField !== field) return;
+    editingNowField = null;
+    const value = input.value.trim();
+    if (save && field === 'name' && value) await T.editTrack(cur.id, { name: value });
+    else if (save && field === 'destination') await T.editTrack(cur.id, { destination: value });
+    else if (save && field === 'stop') await T.setStop(cur.id, value);
     else renderNow(state);
-    if (save && val.trim() === (cur.currentStop || '')) renderNow(state);
+    const unchanged =
+      (field === 'name' && value === cur.name) ||
+      (field === 'destination' && value === (cur.destination || '')) ||
+      (field === 'stop' && value === (cur.currentStop || ''));
+    if (save && unchanged) renderNow(state);
   };
 
-  ta.onblur = () => commit(true);
-  ta.onkeydown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+  input.onblur = () => commit(true);
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter' && (field !== 'stop' || !e.shiftKey)) {
       e.preventDefault();
-      ta.blur();
+      input.blur();
     }
     if (e.key === 'Escape') {
       e.preventDefault();
-      ta.onblur = null;
+      input.onblur = null;
       commit(false);
     }
   };
@@ -512,7 +495,7 @@ document.addEventListener('keydown', (e) => {
  * steps are still visually separated, so it reads as three questions and
  * behaves as one.
  */
-function openSwitchSheet(mode = 'switch', { jumpToNew = false, initialDest = null } = {}) {
+function openSwitchSheet(mode = 'switch', { jumpToNew = false, initialDest = null, resumeEventId = null } = {}) {
   const cur = T.activeTrack(state);
   const prefill = cur?.currentStop || '';
   const others = state.order.map((id) => state.tracks[id]).filter((t) => t && t.id !== cur?.id);
@@ -624,7 +607,7 @@ function openSwitchSheet(mode = 'switch', { jumpToNew = false, initialDest = nul
         if (dest === '__depot__') return T.park(leave);
         const target = state.tracks[dest];
           if (!target) return;
-          if (target.leftAt) return T.resume({ toId: dest, ...leave });
+          if (target.leftAt) return T.resume({ toId: dest, resumeEventId: dest === initialDest ? resumeEventId : null, ...leave });
           return T.switchTo({ toId: dest, ...leave });
       };
 
@@ -692,111 +675,171 @@ function openNewTrackSheet(leave = null) {
   );
 }
 
-function eventSummary(event) {
-  switch (event.type) {
-    case 'created':
-      return 'Track created';
-    case 'started':
-      return 'First ride started';
-    case 'ride':
-      return `Ride lasted ${duration(event.durationMs)}`;
-    case 'carried_time':
-      return `${duration(event.durationMs)} active time carried forward`;
-    case 'switch':
-      return event.toName ? `Switched to ${event.toName}` : 'Switched tracks';
-    case 'park':
-      return 'Parked the locomotive in the shed';
-    case 'stop':
-      return `Stop: ${event.text || 'No pickup note'}`;
-    case 'resume':
-      return event.fromName ? `Resumed from ${event.fromName}` : 'Resumed from the shed';
-    case 'note':
-      return `Note: ${event.text}`;
-    case 'status':
-      return `Status changed to ${STATUS_LABEL[event.to] || event.to || 'unknown'}`;
-    case 'arrived':
-      return `Arrived with ${duration(event.totalActiveMs)} active time`;
-    case 'reopened':
-      return 'Returned from Arrivals to the yard';
-    case 'renamed':
-      return `Renamed from ${event.from} to ${event.to}`;
-    default:
-      return event.type;
+function timelineEpisodes(track) {
+  const episodes = [];
+  let awayAt = null;
+  const push = (event, label, kind = event.type, interactive = false) =>
+    episodes.push({ id: event.id, eventId: event.id, at: event.at, label, kind, interactive });
+
+  for (const event of [...(track.events || [])].sort((a, b) => a.at - b.at)) {
+    switch (event.type) {
+      case 'created':
+        push(event, 'track started', 'origin');
+        break;
+      case 'started':
+        push(event, 'first ride', 'resume');
+        break;
+      case 'ride':
+      case 'carried_time':
+        if (event.durationMs) push(event, `rode ${duration(event.durationMs)}`, 'ride');
+        break;
+      case 'switch':
+        awayAt = event.at;
+        push(event, event.toName ? `switched to ${event.toName}` : 'switched tracks', 'switch');
+        break;
+      case 'park':
+        awayAt = event.at;
+        push(event, 'parked in the shed', 'park');
+        break;
+      case 'stop':
+        awayAt ||= event.at;
+        push(event, `stopped: “${event.text || 'no note'}”${event.passedAt ? ' · passed' : ''}`, 'stop', true);
+        break;
+      case 'note':
+        push(event, `note: “${event.text || ''}”${event.resolvedAt ? ' · resolved' : ''}`, 'note', true);
+        break;
+      case 'resume':
+        if (awayAt && event.at > awayAt) {
+          episodes.push({ id: `${event.id}-away`, eventId: null, at: event.at, label: `${duration(event.at - awayAt)} away`, kind: 'away' });
+        }
+        push(event, 'resumed', 'resume');
+        awayAt = null;
+        break;
+      case 'continued':
+        push(event, `continued from ${event.fromType || 'marker'}`, 'resume');
+        break;
+      case 'arrived':
+        push(event, 'arrived', 'arrived');
+        break;
+      case 'reopened':
+        push(event, 'returned to the yard', 'resume');
+        break;
+      default:
+        break;
+    }
   }
+  return episodes;
 }
 
 function openTrackDetails(id, { focusEventId = null } = {}) {
   const track = state.tracks[id];
   if (!track) return;
-  const events = [...(track.events || [])].sort((a, b) => a.at - b.at);
+  const episodes = timelineEpisodes(track);
   const arrived = track.status === STATUS.ARRIVED;
   openSheet(
     `
     <div class="details-heading">
       <div>
         <div class="eyebrow">${arrived ? 'arrival' : 'track details'}</div>
-        <input class="details-name" id="details-name" value="${esc(track.name)}" aria-label="Track title" />
+        <h2>${esc(track.name)}</h2>
         ${track.destination ? `<div class="details-destination">→ ${esc(track.destination)}</div>` : ''}
       </div>
       <button class="icon-text-button" data-close>close</button>
     </div>
-    <details class="track-history" open>
-      <summary><span>Track history</span><small>${events.length} event${events.length === 1 ? '' : 's'}</small></summary>
-      <ol class="timeline">
-        ${events
+    <div class="episode-heading"><span>attention line</span><small>${episodes.length} episode${episodes.length === 1 ? '' : 's'}</small></div>
+    <div class="episode-viewport">
+      <ol class="episode-track" style="--episode-count:${Math.max(1, episodes.length)}">
+        ${episodes
           .map(
-            (event) => `<li id="event-${esc(event.id)}" class="timeline-event event-${esc(event.type)}">
-              <span class="timeline-mark" aria-hidden="true"></span>
-              <div><strong>${esc(eventSummary(event))}</strong><time>${esc(dateTime(event.at))}</time></div>
+            (episode) => `<li id="episode-${esc(episode.id)}" class="episode episode-${esc(episode.kind)}">
+              <span class="episode-pin" aria-hidden="true"></span>
+              ${
+                episode.interactive
+                  ? `<button class="episode-copy" data-marker-id="${esc(episode.eventId)}"><strong>${esc(episode.label)}</strong><time>${esc(dateTime(episode.at))}</time></button>`
+                  : `<div class="episode-copy"><strong>${esc(episode.label)}</strong><time>${esc(dateTime(episode.at))}</time></div>`
+              }
             </li>`
           )
           .join('')}
       </ol>
-    </details>
+    </div>
     <div class="sheet-actions details-actions">
       <button class="btn btn-danger" id="details-delete">delete track</button>
       <span class="spacer"></span>
       <button class="btn" data-close>done</button>
     </div>`,
     () => {
-      const name = $('details-name');
-      let savedName = track.name;
-      const saveName = async () => {
-        const value = name.value.trim();
-        if (!value || value === savedName) {
-          name.value = savedName;
-          return;
-        }
-        savedName = value;
-        await T.editTrack(id, { name: value });
-      };
-      name.onblur = saveName;
-      name.onkeydown = (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          name.blur();
-        }
-        if (e.key === 'Escape') {
-          e.preventDefault();
-          name.value = savedName;
-          name.blur();
-        }
-      };
+      sheetEl.querySelectorAll('[data-marker-id]').forEach((button) => {
+        button.onclick = () => openMarkerSheet(id, button.dataset.markerId);
+      });
       $('details-delete').onclick = () => deleteTrackWithUndo(id);
       if (focusEventId) {
         requestAnimationFrame(() => {
-          const target = document.getElementById(`event-${focusEventId}`);
+          const target = document.getElementById(`episode-${focusEventId}`);
           target?.classList.add('is-focused');
-          target?.scrollIntoView({ block: 'center' });
+          target?.scrollIntoView({ block: 'nearest', inline: 'center' });
         });
       }
     }
   );
 }
 
+function openMarkerSheet(id, eventId) {
+  const track = state.tracks[id];
+  const event = (track?.events || []).find(
+    (item) => item.id === eventId && (item.type === 'stop' || item.type === 'note')
+  );
+  if (!track || !event) return;
+  const isNote = event.type === 'note';
+  const stateLabel = event.passedAt ? 'passed' : event.resolvedAt ? 'resolved' : 'current';
+  openSheet(
+    `
+    <div class="details-heading marker-heading">
+      <div><div class="eyebrow">${esc(event.type)}</div><h2>${esc(track.name)}</h2></div>
+      <button class="icon-text-button" data-close>close</button>
+    </div>
+    <blockquote class="marker-inspect-text">${esc(event.text || 'No note')}</blockquote>
+    <div class="marker-inspect-meta"><time>${esc(dateTime(event.at))}</time><span>${esc(stateLabel)}</span></div>
+    <div class="sheet-actions marker-actions">
+      <button class="btn btn-quiet" id="marker-details">track details</button>
+      ${isNote ? `<button class="btn" id="marker-resolve">${event.resolvedAt ? 'reopen note' : 'resolve note'}</button>` : ''}
+      <span class="spacer"></span>
+      ${track.status !== STATUS.ARRIVED ? `<button class="btn btn-primary" id="marker-continue">continue from here</button>` : ''}
+    </div>`,
+    () => {
+      $('marker-details').onclick = () => openTrackDetails(id, { focusEventId: eventId });
+      const resolve = $('marker-resolve');
+      if (resolve) {
+        resolve.onclick = async () => {
+          const willResolve = !event.resolvedAt;
+          await T.setNoteResolved(id, eventId, willResolve);
+          closeSheet();
+          toast(willResolve ? 'Note resolved.' : 'Note reopened.');
+        };
+      }
+      const continueButton = $('marker-continue');
+      if (continueButton) continueButton.onclick = () => continueFromMarker(id, eventId);
+    }
+  );
+}
+
+async function continueFromMarker(id, eventId) {
+  const cur = T.activeTrack(state);
+  closeSheet();
+  if (cur?.id === id) {
+    await T.continueOnTrack(id, eventId);
+    return;
+  }
+  if (!cur) {
+    await T.resume({ toId: id, resumeEventId: eventId });
+    return;
+  }
+  openSwitchSheet('switch', { initialDest: id, resumeEventId: eventId });
+}
+
 function openNoteSheet(id) {
   const track = state.tracks[id];
-  if (!track || track.status === STATUS.ACTIVE || track.status === STATUS.ARRIVED) return;
+  if (!track || track.status === STATUS.ARRIVED) return;
   openSheet(
     `
     <div class="sheet-step">
@@ -1034,7 +1077,7 @@ svgEl.addEventListener('click', (e) => {
   const sig = e.target.closest?.('[data-action="signal"]');
   if (sig) return onSignal(sig.dataset.id);
   const event = e.target.closest?.('[data-action="event"]');
-  if (event) return openTrackDetails(event.dataset.id, { focusEventId: event.dataset.eventId });
+  if (event) return openMarkerSheet(event.dataset.id, event.dataset.eventId);
   const depot = e.target.closest?.('[data-action="depot"]');
   if (depot && T.activeTrack(state)) return openSwitchSheet('park');
 });
@@ -1045,7 +1088,7 @@ svgEl.addEventListener('keydown', (e) => {
   if (!el) return;
   e.preventDefault();
   if (el.dataset.action === 'signal') onSignal(el.dataset.id);
-  else if (el.dataset.action === 'event') openTrackDetails(el.dataset.id, { focusEventId: el.dataset.eventId });
+  else if (el.dataset.action === 'event') openMarkerSheet(el.dataset.id, el.dataset.eventId);
   else if (el.dataset.action === 'depot') {
     if (T.activeTrack(state)) openSwitchSheet('park');
   } else onPickTrack(el.dataset.id);
@@ -1053,7 +1096,7 @@ svgEl.addEventListener('keydown', (e) => {
 
 labelsEl.addEventListener('click', (e) => {
   const event = e.target.closest?.('.event-marker');
-  if (event) return openTrackDetails(event.dataset.id, { focusEventId: event.dataset.eventId });
+  if (event) return openMarkerSheet(event.dataset.id, event.dataset.eventId);
   const note = e.target.closest?.('.add-note');
   if (note) return openNoteSheet(note.dataset.id);
   const details = e.target.closest?.('.details-track');
@@ -1076,50 +1119,6 @@ labelsEl.addEventListener('pointerout', (e) => {
   handles?.rows.get(group.dataset.id)?.g.classList.remove('is-hovered');
 });
 
-let draggingTrackId = null;
-labelsEl.addEventListener('dragstart', (e) => {
-  const handle = e.target.closest?.('.drag-handle');
-  if (!handle) return;
-  draggingTrackId = handle.dataset.id;
-  e.dataTransfer.effectAllowed = 'move';
-  e.dataTransfer.setData('text/plain', draggingTrackId);
-  handle.closest('.track-label-group')?.classList.add('is-dragging');
-});
-
-labelsEl.addEventListener('dragover', (e) => {
-  const target = e.target.closest?.('.track-label-group');
-  if (!target || !draggingTrackId || target.dataset.id === draggingTrackId) return;
-  e.preventDefault();
-  target.classList.add('is-drop-target');
-});
-
-labelsEl.addEventListener('dragleave', (e) => {
-  e.target.closest?.('.track-label-group')?.classList.remove('is-drop-target');
-});
-
-labelsEl.addEventListener('drop', async (e) => {
-  const target = e.target.closest?.('.track-label-group');
-  if (!target || !draggingTrackId || target.dataset.id === draggingTrackId) return;
-  e.preventDefault();
-  const ids = [...state.order];
-  const from = ids.indexOf(draggingTrackId);
-  const to = ids.indexOf(target.dataset.id);
-  if (from < 0 || to < 0) return;
-  const [moved] = ids.splice(from, 1);
-  ids.splice(to, 0, moved);
-  reorderFlipPositions = new Map(
-    [...labelsEl.querySelectorAll('.track-label-group')].map((el) => [el.dataset.id, el.getBoundingClientRect().top])
-  );
-  draggingTrackId = null;
-  labelsEl.querySelectorAll('.is-drop-target, .is-dragging').forEach((el) => el.classList.remove('is-drop-target', 'is-dragging'));
-  await T.reorder(ids);
-});
-
-labelsEl.addEventListener('dragend', () => {
-  draggingTrackId = null;
-  labelsEl.querySelectorAll('.is-drop-target, .is-dragging').forEach((el) => el.classList.remove('is-drop-target', 'is-dragging'));
-});
-
 $('btn-new').onclick = () => {
   if (state?.order?.length >= 10) return toast('The yard holds up to 10 active tracks.');
   if (!state?.order?.length) return openNewTrackSheet(null);
@@ -1135,6 +1134,14 @@ window.addEventListener('resize', () => {
     if (state) render(state, { animate: false });
   }, 120);
 });
+
+setInterval(() => {
+  const cur = state && T.activeTrack(state);
+  if (!cur) return;
+  if (!editingNowField) renderNow(state);
+  const status = labelsEl.querySelector(`.track-label-group[data-id="${CSS.escape(cur.id)}"] .lbl-status`);
+  if (status) status.textContent = statusWord(cur);
+}, 30_000);
 
 // ---------------------------------------------------------------------------
 // Boot
