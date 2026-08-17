@@ -672,12 +672,37 @@ button {
 }
 
 .rail-svg:not(.is-moving) .row.is-active .sleepers {
-  animation: active-track-drift 8s linear infinite;
+  animation: active-track-drift 3.6s linear infinite;
+}
+
+.rail-svg:not(.is-moving) .row.is-active .rail {
+  animation: active-rail-breathe 2.2s ease-in-out infinite;
+}
+
+.rail-svg:not(.is-moving) .row.is-active .railhead {
+  stroke: var(--ink-2);
+  stroke-width: 0.9;
+  stroke-dasharray: 24 190;
+  opacity: 0.38;
+  animation: active-rail-glint 3s linear infinite;
 }
 
 @keyframes active-track-drift {
   to {
     stroke-dashoffset: -11px;
+  }
+}
+
+@keyframes active-rail-breathe {
+  50% {
+    stroke-width: 3.1;
+    opacity: 0.92;
+  }
+}
+
+@keyframes active-rail-glint {
+  to {
+    stroke-dashoffset: -214px;
   }
 }
 
@@ -776,13 +801,24 @@ button {
 }
 
 .rail-svg:not(.is-moving) .loco:not(.at-depot) .loco-idle {
-  animation: locomotive-idle 2.8s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center bottom;
+  animation: locomotive-idle 1.8s ease-in-out infinite;
 }
 
 .rail-svg:not(.is-moving) .loco:not(.at-depot) .rod {
   transform-box: fill-box;
   transform-origin: center;
-  animation: idle-rod 2.8s ease-in-out infinite;
+  animation: idle-rod 1.1s ease-in-out infinite;
+}
+
+.rail-svg:not(.is-moving) .loco:not(.at-depot) .wheel {
+  stroke-dasharray: 2.2 1.6;
+  animation: idle-wheel 1.4s linear infinite;
+}
+
+.rail-svg:not(.is-moving) .loco:not(.at-depot) .lamp {
+  animation: idle-lamp 1.8s ease-in-out infinite;
 }
 
 @keyframes wheel-roll {
@@ -798,14 +834,30 @@ button {
 }
 
 @keyframes locomotive-idle {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-0.12deg);
+  }
   50% {
-    transform: translateY(-0.35px);
+    transform: translateY(-0.85px) rotate(0.2deg);
   }
 }
 
 @keyframes idle-rod {
   50% {
-    transform: translateX(0.45px);
+    transform: translateX(1px) translateY(-0.25px);
+  }
+}
+
+@keyframes idle-wheel {
+  to {
+    stroke-dashoffset: -7.6;
+  }
+}
+
+@keyframes idle-lamp {
+  50% {
+    opacity: 0.72;
   }
 }
 

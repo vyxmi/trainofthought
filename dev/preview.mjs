@@ -188,8 +188,15 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.p
   const idleMotion = await page.evaluate(() => ({
     loco: getComputedStyle(document.querySelector('.loco-idle')).animationName,
     rail: getComputedStyle(document.querySelector('.row.is-active .sleepers')).animationName,
+    wheel: getComputedStyle(document.querySelector('.loco .wheel')).animationName,
+    glint: getComputedStyle(document.querySelector('.row.is-active .railhead')).animationName,
   }));
-  if (!idleMotion.loco.includes('locomotive-idle') || !idleMotion.rail.includes('active-track-drift')) {
+  if (
+    !idleMotion.loco.includes('locomotive-idle') ||
+    !idleMotion.rail.includes('active-track-drift') ||
+    !idleMotion.wheel.includes('idle-wheel') ||
+    !idleMotion.glint.includes('active-rail-glint')
+  ) {
     throw new Error(`Idle micro-motion is missing: ${JSON.stringify(idleMotion)}`);
   }
   await page.click('.details-track[data-id="a"]');
