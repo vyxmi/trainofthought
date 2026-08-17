@@ -154,7 +154,7 @@ async function leave_(state, { stopText, reason, snapshot, stopPrefilled }) {
   settleTime(state);
 
   const text = String(stopText || '').trim();
-  if (text) cur.currentStop = text;
+  cur.currentStop = text;
 
   cur.status = statusFromReason(reason);
   cur.leftBecause = reason;

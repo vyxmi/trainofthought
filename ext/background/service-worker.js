@@ -41,7 +41,7 @@ chrome.runtime.onInstalled.addListener(async () => {
   try {
     await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
   } catch (e) {
-    console.warn('[trainyard] setPanelBehavior unavailable', e);
+    console.warn('[train-of-thought] setPanelBehavior unavailable', e);
   }
   chrome.alarms.create(FLUSH_ALARM, { periodInMinutes: FLUSH_EVERY_MIN });
 });
@@ -69,7 +69,7 @@ chrome.commands.onCommand.addListener((command, tab) => {
     try {
       chrome.sidePanel.open({ windowId: tab.windowId });
     } catch (e) {
-      console.warn('[trainyard] sidePanel.open failed', e);
+      console.warn('[train-of-thought] sidePanel.open failed', e);
     }
   }
 

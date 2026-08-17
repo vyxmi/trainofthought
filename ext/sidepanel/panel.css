@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Trainyard: side panel
+   Train of Thought: side panel
    Visual direction: warm paper, printed ink, signal colour. Closer to a railway
    timetable than a dashboard. Every rail is a rule under a line of type, which
    is why the labels sit above their track rather than beside it.
@@ -379,19 +379,6 @@ button {
   flex: 0 0 auto;
 }
 
-/* Must be block: text-overflow:ellipsis has no effect on an inline box, so as a
-   span this silently ran the stop text out under the signals on narrow panels. */
-.lbl-stop {
-  display: block;
-  font-family: var(--font-note);
-  font-size: 11.5px;
-  color: var(--ink-3);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  margin-top: 1px;
-}
-
 .lbl.is-active .lbl-name {
   color: var(--ink);
   font-weight: 640;
@@ -716,6 +703,65 @@ button {
 
 .marker.is-hidden {
   opacity: 0;
+}
+
+.stop-note {
+  position: absolute;
+  pointer-events: auto;
+  appearance: none;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  text-align: left;
+}
+
+.stop-note:hover,
+.stop-note:focus-visible {
+  background: var(--paper-3);
+  color: var(--ink-2);
+  outline: none;
+}
+
+.stop-reason {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.stop-copy {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-2);
+  font-family: var(--font-note);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stop-note.is-ready .stop-reason {
+  color: var(--sig-ready);
+}
+
+.stop-note.is-waiting .stop-reason {
+  color: var(--sig-caution);
+}
+
+.stop-note.is-ai .stop-reason {
+  color: var(--sig-auto);
+}
+
+.stop-note.is-blocked .stop-reason {
+  color: var(--sig-danger);
 }
 
 /* --- bottom bar --------------------------------------------------------- */
@@ -1095,6 +1141,9 @@ textarea::placeholder {
 
 .theme-toggle button {
   appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   border: 0;
   border-radius: 5px;
   padding: 4px 7px;
@@ -1105,10 +1154,76 @@ textarea::placeholder {
   cursor: pointer;
 }
 
+.theme-toggle svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.35;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .theme-toggle button.is-on {
   background: var(--paper-2);
   color: var(--ink);
   box-shadow: 0 1px 3px rgba(26, 24, 20, 0.14);
+}
+
+.data-details {
+  border-bottom: 1px dashed var(--edge);
+}
+
+.data-details summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  cursor: pointer;
+  list-style: none;
+}
+
+.data-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.data-details summary > svg {
+  width: 15px;
+  height: 15px;
+  margin-top: 2px;
+  fill: none;
+  stroke: var(--ink-3);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 140ms ease;
+}
+
+.data-details[open] summary > svg {
+  transform: rotate(180deg);
+}
+
+.data-details-body {
+  padding: 0 0 12px;
+}
+
+.data-actions {
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+@media (max-width: 300px) {
+  .setting {
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .theme-toggle,
+  .setting > select,
+  .setting > .switch {
+    align-self: flex-start;
+  }
 }
 
 .switch {

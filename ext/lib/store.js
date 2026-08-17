@@ -80,7 +80,7 @@ export function defaultState() {
     /** Arrived tracks, most recent first. Lightweight history, not an archive. */
     history: [],
     settings: {
-      theme: 'daytime', // 'daytime' | 'nighttime'
+      theme: 'nighttime', // 'daytime' | 'nighttime'
       // Browsing activity is user data under Chrome Web Store policy, even
       // when it never leaves the device. Observation therefore starts only
       // after an explicit opt-in in Settings.

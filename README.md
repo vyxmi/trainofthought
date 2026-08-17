@@ -1,4 +1,4 @@
-# Trainyard
+# Train of Thought
 
 One locomotive, many tracks. A Chrome side panel for switching between trains of thought without losing them.
 
@@ -28,7 +28,7 @@ No build step. Edit a file, hit the reload arrow on the extensions page, reopen 
 | **Current stop** | Where you are on that track. It is *also* the re-entry cue: when you leave, this is what you'll read when you come back. One field, not two. |
 | **Destination** | Optional. The stable goal. Never required to create a track. |
 | **Signal** | The track's state, at the entrance. Tap it to mark a track ready. |
-| **Return board** | The marker left standing where the engine was. Shown only on tracks the engine isn't on; where it *is*, the engine is the marker. |
+| **Stop flag** | The marker left standing where the engine was, paired with why you stopped and the optional note you left. The flag and note return you to that track. |
 | **Shed** | Where the locomotive sits when your attention isn't on anything tracked. |
 
 States: `active` · `parked` · `waiting` · `ai_working` · `ready` · `arrived`. "Hit a stop" is parked with a red signal rather than a seventh state.

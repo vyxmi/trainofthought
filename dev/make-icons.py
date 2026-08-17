@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate Trainyard toolbar icons.
+"""Generate Train of Thought toolbar icons.
 
 The mark is a turnout: one line in, two lines out, and a filled dot on the route
 that was taken. At 16px that reads as "a choice of tracks", which is the product.

@@ -1,5 +1,5 @@
 {
-  "name": "trainyard",
+  "name": "train-of-thought",
   "version": "0.1.0",
   "description": "A Chrome side panel for switching between trains of thought without losing them.",
   "private": true,

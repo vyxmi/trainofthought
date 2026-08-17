@@ -146,6 +146,10 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.p
 // 1. First run
 {
   const { ctx, page } = await openPanel(null);
+  const firstTheme = await page.getAttribute('html', 'data-theme');
+  const wordmark = await page.textContent('.wordmark span');
+  if (firstTheme !== 'nighttime') throw new Error('Fresh installs should start in nighttime mode');
+  if (wordmark !== 'TRAIN OF THOUGHT') throw new Error('Updated extension name is not visible');
   await shot(page, '01-empty');
   await page.fill('#first-name', 'Portfolio');
   await page.click('#first-go');
@@ -191,6 +195,15 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.p
   await page.waitForTimeout(1400);
   await shot(page, '07-switch-done');
 
+  const portfolioFlag = await page.locator('.stop-note[data-id="a"]').textContent();
+  if (!portfolioFlag.includes('AI working') || !portfolioFlag.includes('Write deposit-flow results')) {
+    throw new Error('Stop flag does not show its leaving reason and pickup note');
+  }
+  await page.click('.stop-note[data-id="a"]');
+  const portfolioSelected = await page.locator('[data-dest="a"]').evaluate((el) => el.classList.contains('is-selected'));
+  if (!portfolioSelected) throw new Error('Clicking a stop flag did not preselect its track');
+  await page.keyboard.press('Escape');
+
   const after = await page.evaluate(async () => {
     const got = await chrome.storage.local.get('ty');
     return {
@@ -231,6 +244,10 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.p
 
   await page.click('#btn-settings');
   await page.waitForTimeout(250);
+  if (await page.locator('text=Choose the light in the yard.').count()) throw new Error('Removed theme subtext is still visible');
+  if (await page.locator('.data-details').evaluate((el) => el.open)) throw new Error('Your data should start collapsed');
+  await page.click('.data-details summary');
+  if (!(await page.locator('.data-details').evaluate((el) => el.open))) throw new Error('Your data did not expand');
   await shot(page, '12-settings');
   await page.click('[data-theme="nighttime"]');
   await page.waitForTimeout(150);

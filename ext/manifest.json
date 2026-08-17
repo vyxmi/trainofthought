@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Trainyard",
+  "name": "Train of Thought",
   "version": "0.1.0",
   "description": "One locomotive, many tracks. Switch context without losing your train of thought.",
   "minimum_chrome_version": "116",
@@ -13,7 +13,7 @@
   },
 
   "action": {
-    "default_title": "Trainyard: open the yard",
+    "default_title": "Train of Thought: open the yard",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",

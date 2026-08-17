@@ -20,12 +20,12 @@ const NS = 'http://www.w3.org/2000/svg';
 export const GEO = {
   PAD_R: 14, // right margin — rails run toward it, never quite off the edge
   LADDER_X0: 22, // ladder x at the top row
-  LADDER_SLOPE: 5, // ladder leans right as it descends, like a real yard throat
+  LADDER_SLOPE: 2, // a shallow yard throat preserves room for labels on long lists
   // Row height is set by clearance, not taste: the label block is ~32px tall and
   // must clear the locomotive's roof (19px above the rail) with air to spare, or
   // the engine parks on top of the words.
   ROW_TOP: 62,
-  ROW_H: 74,
+  ROW_H: 70,
   DEPOT_GAP: 44,
   // Small and tidy. A large radius made the drawn turnouts read as decorative
   // hooks; the near-vertical ladder run it was trying to hide is dealt with by
@@ -36,7 +36,7 @@ export const GEO = {
   // Labels clear the ladder entirely. The left gutter belongs to the railway —
   // it is the one column the locomotive travels through, and text in it gets run
   // over. This is why the yard has a spine.
-  LABEL_DX: 46,
+  LABEL_DX: 28,
   LABEL_TOP: -56, // label block sits above its rail, which underlines it
 };
 
@@ -248,7 +248,14 @@ export function signal(track) {
  * on the active track the engine itself is the marker.
  */
 export function returnMarker(track) {
-  const g = el('g', { class: 'marker', 'data-id': track.id, 'data-action': 'resume', role: 'button', tabindex: '0' });
+  const g = el('g', {
+    class: 'marker',
+    'data-id': track.id,
+    'data-action': 'resume',
+    'aria-label': `Return to ${track.name}`,
+    role: 'button',
+    tabindex: '0',
+  });
   // A board, not a disc. A disc at this size is indistinguishable from a wheel,
   // which made the yard look like it had engines parked on every track.
   g.appendChild(el('path', { class: 'mk-post', d: 'M 0,0 L 0,-16' }));

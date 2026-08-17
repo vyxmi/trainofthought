@@ -12,6 +12,7 @@
 import {
   STATUS,
   LEFT,
+  LEFT_LABEL,
   EV,
   readState,
   readObs,
@@ -174,10 +175,25 @@ function renderLabels(s) {
     const stop = t.currentStop?.trim() || '';
     b.innerHTML =
       `<span class="lbl-head"><span class="lbl-name">${esc(t.name)}</span>` +
-      `<span class="lbl-status">${esc(statusWord(t))}</span></span>` +
-      (stop ? `<span class="lbl-stop">${esc(stop)}</span>` : '');
+      `<span class="lbl-status">${esc(statusWord(t))}</span></span>`;
     b.title = t.id === activeId ? `${t.name}: the locomotive is here` : `Resume ${t.name}`;
     labelsEl.appendChild(b);
+
+    if (t.id !== activeId && t.leftAt) {
+      const markerCopy = document.createElement('button');
+      markerCopy.type = 'button';
+      markerCopy.className = ['stop-note', stateClass(t)].filter(Boolean).join(' ');
+      markerCopy.dataset.id = t.id;
+      markerCopy.style.left = `${slot.platformX + 15}px`;
+      markerCopy.style.top = `${slot.y - 31}px`;
+      markerCopy.style.width = `${Math.max(80, layout.width - slot.platformX - 48)}px`;
+      const reason = LEFT_LABEL[t.leftBecause] || 'stopped';
+      markerCopy.innerHTML =
+        `<span class="stop-reason">${esc(reason)}</span>` +
+        (stop ? `<span class="stop-copy">${esc(stop)}</span>` : '');
+      markerCopy.title = `Return to ${t.name}`;
+      labelsEl.appendChild(markerCopy);
+    }
   }
 
   const d = document.createElement('button');
@@ -571,17 +587,22 @@ function openSettings() {
     <div class="setting">
       <div class="setting-copy">
         <strong>Time of day</strong>
-        <span>Choose the light in the yard.</span>
       </div>
       <div class="theme-toggle" role="group" aria-label="Time of day">
-        <button type="button" data-theme="daytime" class="${s.theme !== 'nighttime' ? 'is-on' : ''}">daytime</button>
-        <button type="button" data-theme="nighttime" class="${s.theme === 'nighttime' ? 'is-on' : ''}">nighttime</button>
+        <button type="button" data-theme="daytime" aria-label="Daytime" title="Daytime" class="${s.theme !== 'nighttime' ? 'is-on' : ''}">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.7"></circle><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.1 3.1l1.4 1.4M11.5 11.5l1.4 1.4M12.9 3.1l-1.4 1.4M4.5 11.5l-1.4 1.4"></path></svg>
+          <span>daytime</span>
+        </button>
+        <button type="button" data-theme="nighttime" aria-label="Nighttime" title="Nighttime" class="${s.theme === 'nighttime' ? 'is-on' : ''}">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M12.9 10.7A6 6 0 0 1 5.3 3.1a5.4 5.4 0 1 0 7.6 7.6Z"></path></svg>
+          <span>nighttime</span>
+        </button>
       </div>
     </div>
     <div class="setting">
       <div class="setting-copy">
         <strong>Learn where I work (optional)</strong>
-        <span>When enabled, Trainyard records the hostnames you visit while a track is active to learn which sites belong with it. This browsing activity stays only in Chrome storage on this device; it is never sent to us or anyone else. Page contents are never read.</span>
+        <span>When enabled, Train of Thought records the hostnames you visit while a track is active to learn which sites belong with it. This browsing activity stays only in Chrome storage on this device; it is never sent to us or anyone else. Page contents are never read.</span>
       </div>
       <input type="checkbox" class="switch" id="set-observe" ${s.observe ? 'checked' : ''} />
     </div>
@@ -596,24 +617,29 @@ function openSettings() {
         <option value="off"${s.motion === 'off' ? ' selected' : ''}>off</option>
       </select>
     </div>
-    <div class="setting">
-      <div class="setting-copy">
-        <strong>Your data</strong>
-        <span>Everything lives on this machine. There is no account and no server to send it to.</span>
+    <details class="data-details">
+      <summary>
+        <span class="setting-copy">
+          <strong>Your data</strong>
+          <span>Everything lives on this machine.</span>
+        </span>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 5.5 8 10.5 13 5.5"></path></svg>
+      </summary>
+      <div class="data-details-body">
+        <div class="sheet-actions data-actions">
+          <button class="btn" id="set-export">export json</button>
+          <button class="btn" id="set-events">export usage log</button>
+          <span class="spacer"></span>
+          <button class="btn btn-quiet" id="set-clear">erase everything</button>
+        </div>
+        <p class="privacy-note">
+          Train of Thought has no host permissions and no content scripts, so it cannot read any page you visit.
+          It sees tab hostnames and titles it is handed by Chrome. Hostnames are stored to learn track associations.
+          Full URLs are written only into a snapshot, only at the moment you deliberately leave a track, and are
+          deleted when that track arrives.
+        </p>
       </div>
-    </div>
-    <div class="sheet-actions">
-      <button class="btn" id="set-export">export json</button>
-      <button class="btn" id="set-events">export usage log</button>
-      <span class="spacer"></span>
-      <button class="btn btn-quiet" id="set-clear">erase everything</button>
-    </div>
-    <p class="privacy-note">
-      Trainyard has no host permissions and no content scripts, so it cannot read any page you visit.
-      It sees tab hostnames and titles it is handed by Chrome. Hostnames are stored to learn track associations.
-      Full URLs are written only into a snapshot, only at the moment you deliberately leave a track, and are
-      deleted when that track arrives.
-    </p>
+    </details>
     <div class="sheet-actions">
       <button class="btn btn-quiet" data-close>close</button>
     </div>`,
@@ -629,8 +655,8 @@ function openSettings() {
       $('set-observe').onchange = (e) => T.setSetting('observe', e.target.checked);
       $('set-motion').onchange = (e) => T.setSetting('motion', e.target.value);
       $('set-export').onclick = async () =>
-        download('trainyard-state.json', { state: await readState(), observed: await readObs() });
-      $('set-events').onclick = async () => download('trainyard-usage.json', await readEvents());
+        download('train-of-thought-state.json', { state: await readState(), observed: await readObs() });
+      $('set-events').onclick = async () => download('train-of-thought-usage.json', await readEvents());
       $('set-clear').onclick = async () => {
         if (!confirm('Erase every track, association and usage record on this machine?')) return;
         await clearAll();
@@ -746,7 +772,7 @@ svgEl.addEventListener('keydown', (e) => {
 });
 
 labelsEl.addEventListener('click', (e) => {
-  const lbl = e.target.closest?.('.lbl');
+  const lbl = e.target.closest?.('.lbl, .stop-note');
   if (lbl) onPickTrack(lbl.dataset.id);
   const depot = e.target.closest?.('[data-action="depot"]');
   if (depot && T.activeTrack(state)) openSwitchSheet('park');
