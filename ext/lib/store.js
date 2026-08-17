@@ -13,7 +13,7 @@
  *   ty_events — local analytics ring buffer (append-only, capped, never leaves disk)
  */
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export const K_STATE = 'ty';
 export const K_OBS = 'ty_obs';
@@ -206,6 +206,21 @@ function migrate(s) {
     for (const t of Object.values(s.tracks || {})) delete t.snapshot;
     if (s.settings) delete s.settings.restoreTabs;
     s.schemaVersion = 3;
+  }
+  // v3 → v4: Stops and Notes become durable timeline points. Stops can be
+  // passed by resuming from them; Notes can be resolved without disappearing.
+  if (s.schemaVersion < 4) {
+    for (const t of Object.values(s.tracks || {})) {
+      for (const event of t.events || []) {
+        if (event.type === 'stop' && event.passedAt === undefined) event.passedAt = null;
+        if (event.type === 'note' && event.resolvedAt === undefined) event.resolvedAt = null;
+      }
+      if (t.status === STATUS.ACTIVE && t.lastActiveAt) {
+        const latestStop = [...(t.events || [])].reverse().find((event) => event.type === 'stop' && !event.passedAt);
+        if (latestStop && latestStop.at <= t.lastActiveAt) latestStop.passedAt = t.lastActiveAt;
+      }
+    }
+    s.schemaVersion = 4;
   }
   // Fill any gaps introduced by partial writes.
   return { ...defaultState(), ...s, settings: { ...defaultState().settings, ...(s.settings || {}) } };

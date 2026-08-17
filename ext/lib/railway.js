@@ -25,13 +25,13 @@ export const GEO = {
   // must clear the locomotive's roof (19px above the rail) with air to spare, or
   // the engine parks on top of the words.
   ROW_TOP: 62,
-  ROW_H: 70,
+  ROW_H: 88,
   DEPOT_GAP: 44,
   // Small and tidy. A large radius made the drawn turnouts read as decorative
   // hooks; the near-vertical ladder run it was trying to hide is dealt with by
   // clamping the engine's lean instead (see anim.js maxRotate).
   TURNOUT_R: 14,
-  PLATFORM_DX: 78, // where the locomotive stands, measured from the ladder
+  PLATFORM_DX: 58, // keep the active point near the throat so history starts early
   SIGNAL_INSET: 22, // signals align in a column on the right edge
   // Labels clear the ladder entirely. The left gutter belongs to the railway —
   // it is the one column the locomotive travels through, and text in it gets run
@@ -200,24 +200,28 @@ function el(name, attrs = {}, children = []) {
  */
 export function locomotive() {
   return el('g', { class: 'loco', 'aria-hidden': 'true' }, [
-    el('g', { class: 'loco-idle' }, [
-      el('g', { class: 'loco-shadow' }, [el('ellipse', { cx: 0, cy: 1.2, rx: 14, ry: 2 })]),
-      // wheels
-      el('circle', { class: 'wheel', cx: -8, cy: -3.4, r: 3.4 }),
-      el('circle', { class: 'wheel', cx: -0.5, cy: -3.4, r: 3.4 }),
-      el('circle', { class: 'wheel wheel-driver', cx: 7.8, cy: -4, r: 4 }),
-      el('path', { class: 'rod', d: 'M -8,-3.4 L 7.8,-4' }),
-      // frame
-      el('rect', { class: 'body frame', x: -13.5, y: -9, width: 27, height: 3, rx: 0.8 }),
-      // hood
-      el('rect', { class: 'body hood', x: -13, y: -15.2, width: 16, height: 6.4, rx: 1.6 }),
-      el('rect', { class: 'body stack', x: -9.6, y: -17.2, width: 3, height: 2.4, rx: 0.7 }),
-      // cab
-      el('rect', { class: 'body cab', x: 2.4, y: -19, width: 10.8, height: 10.2, rx: 1.8 }),
-      el('rect', { class: 'glass', x: 4.1, y: -17.1, width: 7.2, height: 4.4, rx: 0.9 }),
-      // lamp
-      el('circle', { class: 'lamp', cx: -13.4, cy: -12, r: 1.4 }),
-      el('path', { class: 'beam', d: 'M -14.2,-12 L -26,-15.5 L -26,-8.5 Z' }),
+    // The drawing's hood and lamp point left, so mirror only the artwork while
+    // leaving the outer group free for path translation and rotation.
+    el('g', { class: 'loco-direction', transform: 'scale(-1 1)' }, [
+      el('g', { class: 'loco-idle' }, [
+        el('g', { class: 'loco-shadow' }, [el('ellipse', { cx: 0, cy: 1.2, rx: 14, ry: 2 })]),
+        // wheels
+        el('circle', { class: 'wheel', cx: -8, cy: -3.4, r: 3.4 }),
+        el('circle', { class: 'wheel', cx: -0.5, cy: -3.4, r: 3.4 }),
+        el('circle', { class: 'wheel wheel-driver', cx: 7.8, cy: -4, r: 4 }),
+        el('path', { class: 'rod', d: 'M -8,-3.4 L 7.8,-4' }),
+        // frame
+        el('rect', { class: 'body frame', x: -13.5, y: -9, width: 27, height: 3, rx: 0.8 }),
+        // hood
+        el('rect', { class: 'body hood', x: -13, y: -15.2, width: 16, height: 6.4, rx: 1.6 }),
+        el('rect', { class: 'body stack', x: -9.6, y: -17.2, width: 3, height: 2.4, rx: 0.7 }),
+        // cab
+        el('rect', { class: 'body cab', x: 2.4, y: -19, width: 10.8, height: 10.2, rx: 1.8 }),
+        el('rect', { class: 'glass', x: 4.1, y: -17.1, width: 7.2, height: 4.4, rx: 0.9 }),
+        // lamp
+        el('circle', { class: 'lamp', cx: -13.4, cy: -12, r: 1.4 }),
+        el('path', { class: 'beam', d: 'M -14.2,-12 L -26,-15.5 L -26,-8.5 Z' }),
+      ]),
     ]),
   ]);
 }
@@ -250,7 +254,7 @@ export function signal(track) {
  * on the active track the engine itself is the marker.
  */
 export function returnMarker(track) {
-  const stopEvent = [...(track.events || [])].reverse().find((event) => event.type === 'stop');
+  const stopEvent = [...(track.events || [])].reverse().find((event) => event.type === 'stop' && !event.passedAt);
   const g = el('g', {
     class: 'marker',
     'data-id': track.id,
@@ -283,6 +287,10 @@ export function depotShed(slot) {
   g.appendChild(el('path', { class: 'shed-floor', d: `M ${-(slot.railEndX - slot.lx) + 4},0 L 6,0` }));
   g.appendChild(el('path', { class: 'shed', d: 'M -30,0 L -30,-17 A 15 15 0 0 1 0,-17 L 0,0' }));
   g.appendChild(el('path', { class: 'shed-mouth', d: 'M -22,0 L -22,-15 A 11 11 0 0 1 -0.5,-15 L -0.5,0 Z' }));
+  const doors = el('g', { class: 'shed-doors' });
+  doors.appendChild(el('path', { class: 'shed-door shed-door-left', d: 'M -21.5,-0.5 L -21.5,-14 A 10.5 10.5 0 0 1 -11.2,-16 L -11.2,-0.5 Z' }));
+  doors.appendChild(el('path', { class: 'shed-door shed-door-right', d: 'M -10.8,-0.5 L -10.8,-16 A 10.5 10.5 0 0 1 -0.5,-14 L -0.5,-0.5 Z' }));
+  g.appendChild(doors);
   return g;
 }
 
@@ -344,8 +352,9 @@ export function buildYard(svg, layout, tracks) {
     rows.set(track.id, { g, slot, blade, marker, signal: sig, rail: g.querySelector('.rail') });
   }
 
-  svg.replaceChildren(guides, gLadder, gRows, depotShed(layout.depot));
-  return { guides, rows, ladder: gLadder, rowsLayer: gRows };
+  const depot = depotShed(layout.depot);
+  svg.replaceChildren(guides, gLadder, gRows, depot);
+  return { guides, rows, ladder: gLadder, rowsLayer: gRows, depot };
 }
 
 /** Update signal aspects and marker visibility without touching structure. */
@@ -363,8 +372,8 @@ export function syncAspects(handles, layout, state) {
     row.g.classList.toggle('is-active', isActive);
     // Marker shows only where the engine isn't, and only once you've actually
     // left something behind there.
-    const stopEvent = [...(track.events || [])].reverse().find((event) => event.type === 'stop');
-    const showMarker = !isActive && !!track.leftAt && !!String(track.currentStop || '').trim() && !!stopEvent;
+    const stopEvent = [...(track.events || [])].reverse().find((event) => event.type === 'stop' && !event.passedAt);
+    const showMarker = !isActive && !!track.leftAt && !!stopEvent;
     row.marker.dataset.eventId = stopEvent?.id || '';
     if (showMarker) row.marker.setAttribute('aria-label', `Open the latest stop on ${track.name}`);
     else row.marker.removeAttribute('aria-label');

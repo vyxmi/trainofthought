@@ -9,9 +9,9 @@
  *   markReturn    — "something was left behind, deliberately, right there"
  *   resumeTo      — "you are back, and this is the spot"
  *
- * CSS adds only a sub-pixel idle vibration and a very slow active-rail drift so
- * the current track feels alive without competing with the semantic movements.
- * Total budget for the signature switch stays around one second.
+ * CSS handles tactile hover states; all mechanical motion here is tied to an
+ * actual state change. Total budget for the signature switch stays near one
+ * second, with the shed adding a short door action when it is involved.
  */
 
 import { followPath, place, drawPath, tween, cancel, setMotionMode, motionDisabled } from './anim.js';
@@ -101,8 +101,10 @@ export class Motion {
 
     cancel(this.loco);
     this.svg.classList.add('is-moving');
+    const usesShed = A.kind === 'depot' || B.kind === 'depot';
 
     try {
+      if (usesShed) await this.setShed(true);
       // Throw both blades — the one letting us out, the one letting us in.
       const dir = Math.sign(b - a) || 1;
       await Promise.all([this.throwBlade(a, dir), this.throwBlade(b, -dir)]);
@@ -113,10 +115,15 @@ export class Motion {
       // should see the thing being left behind while you're still leaving.
       const departing = leaveMarker && A.kind === 'track' ? this.markReturn(a) : Promise.resolve();
 
-      await Promise.all([
-        followPath(this.loco, d, { layer: this.guides, duration: RUN_MS, ease: 'rail', autoRotate: true }),
-        departing,
-      ]);
+      this.svg.classList.add('is-running');
+      try {
+        await Promise.all([
+          followPath(this.loco, d, { layer: this.guides, duration: RUN_MS, ease: 'rail', autoRotate: true }),
+          departing,
+        ]);
+      } finally {
+        this.svg.classList.remove('is-running');
+      }
 
       // Rotation accumulated through the turnouts; level the engine on arrival.
       place(this.loco, B.platformX, B.y, 0);
@@ -124,7 +131,9 @@ export class Motion {
       await this.arrivalSettle(b);
     } finally {
       this.svg.classList.remove('is-moving');
+      this.svg.classList.remove('is-running');
       this.resetBlades();
+      if (usesShed) await this.setShed(false);
     }
   }
 
@@ -283,6 +292,39 @@ export class Motion {
       const arm = row.blade?.querySelector('.blade-arm');
       arm?.setAttribute('transform', 'rotate(0)');
     }
+  }
+
+  /** Split doors slide apart before the locomotive enters or leaves, then meet
+   *  again once the movement is complete. */
+  async setShed(open) {
+    const depot = this.handles?.depot;
+    const left = depot?.querySelector('.shed-door-left');
+    const right = depot?.querySelector('.shed-door-right');
+    if (!depot || !left || !right) return;
+    const finish = (value) => {
+      left.setAttribute('transform', `translate(${-5 * value} 0)`);
+      right.setAttribute('transform', `translate(${5 * value} 0)`);
+      depot.classList.toggle('is-open', value > 0.5);
+    };
+    if (motionDisabled()) {
+      finish(open ? 1 : 0);
+      return;
+    }
+    const from = open ? 0 : 1;
+    const to = open ? 1 : 0;
+    depot.classList.toggle('is-opening', open);
+    await tween({
+      el: depot,
+      from,
+      to,
+      duration: 180,
+      ease: 'mech',
+      apply: finish,
+      onComplete: () => {
+        finish(to);
+        depot.classList.remove('is-opening');
+      },
+    });
   }
 
   /** A very small compression on arrival — the engine taking up the slack in the

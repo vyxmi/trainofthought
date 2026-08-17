@@ -147,7 +147,13 @@ export async function park({ stopText = '', reason = LEFT.SWITCHING, stopPrefill
 }
 
 /** Resume is a switch whose *destination* is the interesting half. */
-export async function resume({ toId, stopText = '', reason = LEFT.SWITCHING, stopPrefilled = false }) {
+export async function resume({
+  toId,
+  stopText = '',
+  reason = LEFT.SWITCHING,
+  stopPrefilled = false,
+  resumeEventId = null,
+}) {
   return update(async (state) => {
     if (!boardable(state, toId)) return;
     const target = state.tracks[toId];
@@ -155,7 +161,7 @@ export async function resume({ toId, stopText = '', reason = LEFT.SWITCHING, sto
     const wasStatus = target.status;
 
     await leave_(state, { stopText, reason, stopPrefilled, toId });
-    await board_(state, toId, {});
+    await board_(state, toId, { resumeEventId });
 
     await logEvent(EV.TRACK_RESUMED, {
       id: toId,
@@ -194,7 +200,7 @@ async function leave_(state, { stopText, reason, stopPrefilled, toId = null }) {
     },
     at
   );
-  if (text) addTrackEvent(cur, 'stop', { text, reason }, at);
+  if (text) addTrackEvent(cur, 'stop', { text, reason, passedAt: null }, at);
   if (previousStatus !== nextStatus) addTrackEvent(cur, 'status', { from: previousStatus, to: nextStatus }, at);
 
   await logEvent(EV.TRACK_PARKED, {
@@ -209,7 +215,7 @@ async function leave_(state, { stopText, reason, stopPrefilled, toId = null }) {
   if (stopPrefilled) await logEvent(EV.STOP_ACCEPTED, { id: cur.id });
 }
 
-async function board_(state, id, { stopText = '', isNew = false } = {}) {
+async function board_(state, id, { stopText = '', isNew = false, resumeEventId = null } = {}) {
   // Arrived tracks stay in `state.tracks` for history, so an existence check is
   // not enough — a stale UI row could otherwise board a track that has left the
   // yard, producing an active track with no rail to draw it on.
@@ -219,12 +225,19 @@ async function board_(state, id, { stopText = '', isNew = false } = {}) {
   const at = Date.now();
   const wasVisited = !!t.lastActiveAt;
   const previousStatus = t.status;
+  const timelinePoint = resumeEventId
+    ? (t.events || []).find((event) => event.id === resumeEventId && (event.type === 'stop' || event.type === 'note'))
+    : wasVisited
+      ? [...(t.events || [])].reverse().find((event) => event.type === 'stop' && !event.passedAt)
+      : null;
 
   t.status = STATUS.ACTIVE;
   t.leftBecause = null;
   t.lastActiveAt = at;
   t.readyAt = null;
-  if (stopText) t.currentStop = String(stopText).trim();
+  if (timelinePoint?.text) t.currentStop = String(timelinePoint.text).trim();
+  else if (stopText) t.currentStop = String(stopText).trim();
+  if (timelinePoint?.type === 'stop' && !timelinePoint.passedAt) timelinePoint.passedAt = at;
   touch(t);
 
   state.locomotive = { trackId: id, sinceAt: at };
@@ -392,18 +405,34 @@ export async function addNote(id, text) {
   return update(async (state) => {
     const t = state.tracks[id];
     const value = String(text || '').trim().slice(0, 180);
-    if (!t || t.status === STATUS.ARRIVED || t.status === STATUS.ACTIVE || !value) return;
-    addTrackEvent(t, 'note', { text: value });
+    if (!t || t.status === STATUS.ARRIVED || !value) return;
+    addTrackEvent(t, 'note', { text: value, resolvedAt: null });
     touch(t);
   });
 }
 
-export async function reorder(ids) {
+export async function setNoteResolved(id, eventId, resolved = true) {
   return update(async (state) => {
-    const known = new Set(state.order);
-    const next = ids.filter((i, index) => known.has(i) && ids.indexOf(i) === index);
-    for (const id of state.order) if (!next.includes(id)) next.push(id);
-    state.order = next;
+    const t = state.tracks[id];
+    const event = (t?.events || []).find((item) => item.id === eventId && item.type === 'note');
+    if (!t || !event) return;
+    event.resolvedAt = resolved ? Date.now() : null;
+    touch(t);
+  });
+}
+
+export async function continueOnTrack(id, eventId) {
+  return update(async (state) => {
+    const t = state.tracks[id];
+    const event = (t?.events || []).find(
+      (item) => item.id === eventId && (item.type === 'stop' || item.type === 'note')
+    );
+    if (!t || !event || !event.text) return;
+    const at = Date.now();
+    t.currentStop = String(event.text).trim();
+    if (event.type === 'stop' && !event.passedAt) event.passedAt = at;
+    addTrackEvent(t, 'continued', { fromEventId: event.id, fromType: event.type }, at);
+    touch(t);
   });
 }
 
