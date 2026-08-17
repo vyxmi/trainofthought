@@ -138,14 +138,14 @@ export class Motion {
    * vanishes a frame early — which loses the one moment that says "you're back,
    * and this is the spot you meant".
    */
-  resumeTo(fromId, toId) {
+  resumeTo(fromId, toId, opts = {}) {
     return this._serial(async () => {
       const row = this.rowOf(this.indexFor(toId));
       if (row?.marker) {
         row.marker.classList.remove('is-hidden');
         row.marker.style.opacity = '';
       }
-      await this._switch(fromId, toId);
+      await this._switch(fromId, toId, opts);
       if (row) await this.liftMarker(row);
     });
   }

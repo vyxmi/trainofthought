@@ -7,12 +7,26 @@
  *
  *   1. Exactly one track can be ACTIVE, and it is always the one the locomotive
  *      is on. If locomotive.trackId is null, no track is ACTIVE.
- *   2. Leaving a track always writes its currentStop first. You cannot lose your
- *      place by switching, which is the entire product promise.
+ *   2. Every departure is recorded. A visible Stop is created only when the
+ *      user leaves a meaningful currentStop note.
  *   3. ARRIVED tracks leave `order` and enter `history`. They stop being work.
  */
 
-import { STATUS, LEFT, EV, logEvent, newTrack, update } from './store.js';
+import { STATUS, LEFT, EV, logEvent, newTrack, uid, update } from './store.js';
+
+const TRACK_EVENT_CAP = 500;
+
+function addTrackEvent(track, type, props = {}, at = Date.now()) {
+  if (!Array.isArray(track.events)) track.events = [];
+  const event = { id: uid(), type, at, ...props };
+  track.events.push(event);
+  if (track.events.length > TRACK_EVENT_CAP) track.events.splice(0, track.events.length - TRACK_EVENT_CAP);
+  return event;
+}
+
+function trackName(state, id) {
+  return id ? state.tracks[id]?.name || null : null;
+}
 
 /** The locomotive's current track object, or null if it's in the depot. */
 export function activeTrack(state) {
@@ -35,10 +49,14 @@ function touch(t) {
 }
 
 /** Accrue time-on-track before the locomotive moves away. */
-function settleTime(state) {
+function settleTime(state, endedAt = Date.now()) {
   const cur = activeTrack(state);
   const since = state.locomotive?.sinceAt;
-  if (cur && since) cur.msOnTrack += Math.max(0, Date.now() - since);
+  if (!cur || !since) return null;
+  const durationMs = Math.max(0, endedAt - since);
+  cur.msOnTrack += durationMs;
+  addTrackEvent(cur, 'ride', { startedAt: since, endedAt, durationMs }, endedAt);
+  return { startedAt: since, endedAt, durationMs };
 }
 
 function statusFromReason(reason) {
@@ -66,6 +84,7 @@ function statusFromReason(reason) {
  */
 export async function createTrack({ name, destination = '', board = true, leave = null }) {
   return update(async (state) => {
+    if (state.order.length >= 10) return;
     const t = newTrack({ name, destination });
     state.tracks[t.id] = t;
     // Append, so laying a new track never moves an existing one.
@@ -86,6 +105,7 @@ export async function createTrack({ name, destination = '', board = true, leave 
         reason: leave?.reason || LEFT.SWITCHING,
         snapshot: leave?.snapshot || null,
         stopPrefilled: !!leave?.stopPrefilled,
+        toId: t.id,
       });
       await board_(state, t.id, { isNew: true });
     }
@@ -93,8 +113,8 @@ export async function createTrack({ name, destination = '', board = true, leave 
 }
 
 /**
- * Move the locomotive to `toId`, leaving the current track behind with its stop
- * written. This is the signature interaction.
+ * Move the locomotive to `toId`, recording the departure and optionally leaving
+ * a visible Stop when stopText is meaningful. This is the signature interaction.
  *
  * @param {string|null} toId  target track, or null for the depot
  * @param {string} stopText   where to pick the *departing* track back up
@@ -109,7 +129,7 @@ export async function switchTo({ toId, stopText = '', reason = LEFT.SWITCHING, s
     // discovering the target is gone second would park the current track and
     // strand the locomotive pointing at it.
     if (toId && !boardable(state, toId)) return;
-    await leave_(state, { stopText, reason, snapshot, stopPrefilled });
+    await leave_(state, { stopText, reason, snapshot, stopPrefilled, toId });
     if (toId) await board_(state, toId, {});
     else {
       state.locomotive = { trackId: null, sinceAt: Date.now() };
@@ -136,7 +156,7 @@ export async function resume({ toId, stopText = '', reason = LEFT.SWITCHING, sna
     const away = target.leftAt ? Date.now() - target.leftAt : null;
     const wasStatus = target.status;
 
-    await leave_(state, { stopText, reason, snapshot, stopPrefilled });
+    await leave_(state, { stopText, reason, snapshot, stopPrefilled, toId });
     await board_(state, toId, {});
 
     await logEvent(EV.TRACK_RESUMED, {
@@ -148,20 +168,37 @@ export async function resume({ toId, stopText = '', reason = LEFT.SWITCHING, sna
   });
 }
 
-async function leave_(state, { stopText, reason, snapshot, stopPrefilled }) {
+async function leave_(state, { stopText, reason, snapshot, stopPrefilled, toId = null }) {
   const cur = activeTrack(state);
   if (!cur) return;
-  settleTime(state);
+  const at = Date.now();
+  const ride = settleTime(state, at);
 
   const text = String(stopText || '').trim();
   cur.currentStop = text;
 
-  cur.status = statusFromReason(reason);
+  const nextStatus = statusFromReason(reason);
+  const previousStatus = cur.status;
+  cur.status = nextStatus;
   cur.leftBecause = reason;
-  cur.leftAt = Date.now();
+  cur.leftAt = at;
   cur.readyAt = null;
   if (snapshot) cur.snapshot = snapshot;
   touch(cur);
+
+  addTrackEvent(
+    cur,
+    toId ? 'switch' : 'park',
+    {
+      reason,
+      toId,
+      toName: trackName(state, toId),
+      rideDurationMs: ride?.durationMs || 0,
+    },
+    at
+  );
+  if (text) addTrackEvent(cur, 'stop', { text, reason }, at);
+  if (previousStatus !== nextStatus) addTrackEvent(cur, 'status', { from: previousStatus, to: nextStatus }, at);
 
   await logEvent(EV.TRACK_PARKED, {
     id: cur.id,
@@ -183,15 +220,28 @@ async function board_(state, id, { stopText = '', isNew = false } = {}) {
   if (!boardable(state, id)) return;
   const t = state.tracks[id];
   const from = state.locomotive?.trackId || null;
+  const at = Date.now();
+  const wasVisited = !!t.lastActiveAt;
+  const previousStatus = t.status;
 
   t.status = STATUS.ACTIVE;
   t.leftBecause = null;
-  t.lastActiveAt = Date.now();
+  t.lastActiveAt = at;
   t.readyAt = null;
   if (stopText) t.currentStop = String(stopText).trim();
   touch(t);
 
-  state.locomotive = { trackId: id, sinceAt: Date.now() };
+  state.locomotive = { trackId: id, sinceAt: at };
+
+  if (!isNew) {
+    addTrackEvent(
+      t,
+      wasVisited ? 'resume' : 'started',
+      { fromId: from, fromName: trackName(state, from), previousStatus },
+      at
+    );
+  }
+  if (previousStatus !== STATUS.ACTIVE) addTrackEvent(t, 'status', { from: previousStatus, to: STATUS.ACTIVE }, at);
 
   // Deliberately NOT reordering on board. Recency ordering would reshuffle the
   // yard on every switch, and spatial memory ("PMO is the third rail down") is
@@ -209,9 +259,12 @@ export async function markReady(id) {
   return update(async (state) => {
     const t = state.tracks[id];
     if (!t || t.status === STATUS.ACTIVE || t.status === STATUS.ARRIVED) return;
+    const at = Date.now();
+    const previousStatus = t.status;
     t.status = STATUS.READY;
-    t.readyAt = Date.now();
+    t.readyAt = at;
     touch(t);
+    addTrackEvent(t, 'status', { from: previousStatus, to: STATUS.READY }, at);
     await logEvent(EV.TRACK_READY, {
       id,
       // How long the blocker actually lasted.
@@ -226,9 +279,12 @@ export async function unmarkReady(id) {
   return update(async (state) => {
     const t = state.tracks[id];
     if (!t || t.status !== STATUS.READY) return;
-    t.status = statusFromReason(t.leftBecause || LEFT.SWITCHING);
+    const at = Date.now();
+    const nextStatus = statusFromReason(t.leftBecause || LEFT.SWITCHING);
+    t.status = nextStatus;
     t.readyAt = null;
     touch(t);
+    addTrackEvent(t, 'status', { from: STATUS.READY, to: nextStatus }, at);
   });
 }
 
@@ -241,14 +297,18 @@ export async function arrive(id) {
     // twice — which eventually deletes the track object out from under the
     // surviving copy when the 100-entry cap trims it.
     if (!t || t.status === STATUS.ARRIVED) return;
+    const at = Date.now();
     if (state.locomotive?.trackId === id) {
-      settleTime(state);
-      state.locomotive = { trackId: null, sinceAt: Date.now() };
+      settleTime(state, at);
+      state.locomotive = { trackId: null, sinceAt: at };
     }
+    const previousStatus = t.status;
     t.status = STATUS.ARRIVED;
-    t.arrivedAt = Date.now();
+    t.arrivedAt = at;
     t.snapshot = null; // don't hoard tab URLs for finished work
     touch(t);
+    addTrackEvent(t, 'status', { from: previousStatus, to: STATUS.ARRIVED }, at);
+    addTrackEvent(t, 'arrived', { totalActiveMs: t.msOnTrack, startedAt: t.createdAt }, at);
 
     state.order = state.order.filter((x) => x !== id);
     state.history.unshift(id);
@@ -259,7 +319,7 @@ export async function arrive(id) {
 
     await logEvent(EV.TRACK_ARRIVED, {
       id,
-      msAlive: Date.now() - t.createdAt,
+      msAlive: at - t.createdAt,
       msOnTrack: t.msOnTrack,
       wasResumed: !!t.leftAt, // % of resumed tracks that eventually complete
     });
@@ -272,9 +332,12 @@ export async function unarrive(id) {
   return update(async (state) => {
     const t = state.tracks[id];
     if (!t || t.status !== STATUS.ARRIVED) return;
-    t.status = statusFromReason(t.leftBecause || LEFT.SWITCHING);
+    const at = Date.now();
+    const nextStatus = statusFromReason(t.leftBecause || LEFT.SWITCHING);
+    t.status = nextStatus;
     t.arrivedAt = null;
     touch(t);
+    addTrackEvent(t, 'reopened', { from: STATUS.ARRIVED, to: nextStatus }, at);
     state.history = state.history.filter((x) => x !== id);
     if (!state.order.includes(id)) state.order.push(id);
   });
@@ -296,7 +359,11 @@ export async function editTrack(id, { name, destination }) {
   return update(async (state) => {
     const t = state.tracks[id];
     if (!t) return;
-    if (typeof name === 'string' && name.trim()) t.name = name.trim();
+    if (typeof name === 'string' && name.trim() && name.trim() !== t.name) {
+      const previousName = t.name;
+      t.name = name.trim();
+      addTrackEvent(t, 'renamed', { from: previousName, to: t.name });
+    }
     if (typeof destination === 'string') t.destination = destination.trim();
     touch(t);
   });
@@ -312,10 +379,36 @@ export async function removeTrack(id) {
   });
 }
 
+export async function restoreTrack({ track, orderIndex = 0, historyIndex = -1 }) {
+  return update(async (state) => {
+    if (!track?.id || state.tracks[track.id]) return;
+    state.tracks[track.id] = track;
+    if (track.status === STATUS.ARRIVED) {
+      const index = Math.max(0, Math.min(historyIndex < 0 ? state.history.length : historyIndex, state.history.length));
+      state.history.splice(index, 0, track.id);
+    } else {
+      const index = Math.max(0, Math.min(orderIndex, state.order.length));
+      state.order.splice(index, 0, track.id);
+    }
+  });
+}
+
+export async function addNote(id, text) {
+  return update(async (state) => {
+    const t = state.tracks[id];
+    const value = String(text || '').trim().slice(0, 180);
+    if (!t || t.status === STATUS.ARRIVED || t.status === STATUS.ACTIVE || !value) return;
+    addTrackEvent(t, 'note', { text: value });
+    touch(t);
+  });
+}
+
 export async function reorder(ids) {
   return update(async (state) => {
     const known = new Set(state.order);
-    state.order = ids.filter((i) => known.has(i));
+    const next = ids.filter((i, index) => known.has(i) && ids.indexOf(i) === index);
+    for (const id of state.order) if (!next.includes(id)) next.push(id);
+    state.order = next;
   });
 }
 

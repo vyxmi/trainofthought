@@ -248,11 +248,13 @@ export function signal(track) {
  * on the active track the engine itself is the marker.
  */
 export function returnMarker(track) {
+  const stopEvent = [...(track.events || [])].reverse().find((event) => event.type === 'stop');
   const g = el('g', {
     class: 'marker',
     'data-id': track.id,
-    'data-action': 'resume',
-    'aria-label': `Return to ${track.name}`,
+    'data-action': 'event',
+    'data-event-id': stopEvent?.id || '',
+    'aria-label': `Open the latest stop on ${track.name}`,
     role: 'button',
     tabindex: '0',
   });
@@ -359,8 +361,15 @@ export function syncAspects(handles, layout, state) {
     row.g.classList.toggle('is-active', isActive);
     // Marker shows only where the engine isn't, and only once you've actually
     // left something behind there.
-    const showMarker = !isActive && !!track.leftAt;
+    const stopEvent = [...(track.events || [])].reverse().find((event) => event.type === 'stop');
+    const showMarker = !isActive && !!track.leftAt && !!String(track.currentStop || '').trim() && !!stopEvent;
+    row.marker.dataset.eventId = stopEvent?.id || '';
+    if (showMarker) row.marker.setAttribute('aria-label', `Open the latest stop on ${track.name}`);
+    else row.marker.removeAttribute('aria-label');
+    row.marker.setAttribute('role', showMarker ? 'button' : 'presentation');
     row.marker.classList.toggle('is-hidden', !showMarker);
+    row.marker.setAttribute('aria-hidden', String(!showMarker));
+    row.marker.setAttribute('tabindex', showMarker ? '0' : '-1');
     row.marker.style.pointerEvents = showMarker ? '' : 'none';
   }
 }

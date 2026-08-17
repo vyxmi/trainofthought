@@ -58,7 +58,7 @@ await new Promise((r) => server.listen(8899, r));
 
 // --- fixtures --------------------------------------------------------------
 
-const NOW = 1755200000000;
+const NOW = Date.now();
 const t = (id, name, extra = {}) => ({
   id,
   name,
@@ -195,25 +195,33 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.p
   await page.waitForTimeout(1400);
   await shot(page, '07-switch-done');
 
-  const portfolioFlag = await page.locator('.stop-note[data-id="a"]').textContent();
-  if (!portfolioFlag.includes('AI working') || !portfolioFlag.includes('Write deposit-flow results')) {
-    throw new Error('Stop flag does not show its leaving reason and pickup note');
+  const portfolioStop = await page.locator('.event-marker.marker-stop[data-id="a"]').textContent();
+  if (!portfolioStop.includes('stop') || !portfolioStop.includes('Write deposit-flow results') || portfolioStop.includes('AI working')) {
+    throw new Error('Stop marker does not show a note independently from track status');
   }
-  await page.click('.stop-note[data-id="a"]');
-  const portfolioSelected = await page.locator('[data-dest="a"]').evaluate((el) => el.classList.contains('is-selected'));
-  if (!portfolioSelected) throw new Error('Clicking a stop flag did not preselect its track');
+  await page.click('.event-marker.marker-stop[data-id="a"]');
+  const focusedStop = await page.locator('.timeline-event.is-focused').textContent();
+  if (!focusedStop.includes('Stop: Write deposit-flow results')) throw new Error('Stop marker did not open its event in Track Details');
   await page.keyboard.press('Escape');
 
   const after = await page.evaluate(async () => {
     const got = await chrome.storage.local.get('ty');
     return {
       loco: got.ty.locomotive.trackId,
-      portfolio: { status: got.ty.tracks.a.status, stop: got.ty.tracks.a.currentStop, left: !!got.ty.tracks.a.leftAt },
+      portfolio: {
+        status: got.ty.tracks.a.status,
+        stop: got.ty.tracks.a.currentStop,
+        left: !!got.ty.tracks.a.leftAt,
+        eventTypes: got.ty.tracks.a.events.map((event) => event.type),
+      },
       job: got.ty.tracks.d.status,
       markersVisible: [...document.querySelectorAll('.marker')].filter((m) => !m.classList.contains('is-hidden')).length,
     };
   });
   console.log('after switch:', JSON.stringify(after));
+  if (!after.portfolio.eventTypes.includes('switch') || !after.portfolio.eventTypes.includes('ride') || !after.portfolio.eventTypes.includes('stop')) {
+    throw new Error('Switch, ride, and Stop events were not written to Track history');
+  }
   await ctx.close();
 }
 
@@ -260,6 +268,15 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.p
   await page.click('[data-act="arrived"]');
   await page.waitForTimeout(1600);
   await shot(page, '13-arrived');
+  await page.click('#btn-arrivals');
+  const arrivalText = await page.locator('.arrival-row[data-arrival-id="a"]').textContent();
+  if (!arrivalText.includes('Portfolio')) throw new Error('Arrived track is missing from Arrivals');
+  await page.click('.arrival-row[data-arrival-id="a"]');
+  const arrivalHistory = await page.locator('.track-history').textContent();
+  if (!arrivalHistory.includes('Track created') || !arrivalHistory.includes('Arrived with')) {
+    throw new Error('Arrivals did not preserve the complete Track history');
+  }
+  await shot(page, '13b-arrival-details');
   await ctx.close();
 }
 
@@ -277,7 +294,7 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.p
   // Resuming a track must lift its return board rather than leaving it standing.
   // The engine is in the shed after the arrival, so there is nothing to park and
   // the label click resumes directly without the switch sheet.
-  await page.click('.lbl[data-id="b"]');
+  await page.click('.track-title[data-id="b"]');
   await page.waitForTimeout(1800);
   const resumed = await page.evaluate(async () => ({
     loco: (await chrome.storage.local.get('ty')).ty.locomotive.trackId,
@@ -300,7 +317,100 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.p
   await ctx.close();
 }
 
-// 6. Narrow panel — Chrome lets users drag the side panel quite thin
+// 6. Stops, Notes, rename, reorder, details, and recoverable delete
+{
+  const plain = structuredClone(seeded);
+  plain.tracks.a.currentStop = '';
+  const { ctx, page } = await openPanel(plain);
+  await page.click('[data-act="switch"]');
+  await page.click('[data-dest="b"]');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(1400);
+  const plainSwitch = await page.evaluate(async () => {
+    const track = (await chrome.storage.local.get('ty')).ty.tracks.a;
+    return {
+      visibleStop: !!document.querySelector('.event-marker.marker-stop[data-id="a"]'),
+      events: track.events.map((event) => event.type),
+    };
+  });
+  if (plainSwitch.visibleStop || !plainSwitch.events.includes('switch') || plainSwitch.events.includes('stop')) {
+    throw new Error('Plain switching should log a switch without creating a visible Stop');
+  }
+  await ctx.close();
+}
+
+{
+  const { ctx, page } = await openPanel(seeded);
+  await page.click('.add-note[data-id="c"]');
+  await page.fill('#note-text', 'Remember the API edge case');
+  await page.click('#note-save');
+  await page.waitForTimeout(350);
+  if (!(await page.locator('.event-marker.marker-note[data-id="c"]').count())) throw new Error('Note marker was not created');
+  await page.click('.event-marker.marker-note[data-id="c"]');
+  if (!(await page.locator('.timeline-event.is-focused').textContent()).includes('Remember the API edge case')) {
+    throw new Error('Note marker did not open its Track Details event');
+  }
+  await page.waitForTimeout(250);
+  await shot(page, '16a-note-details');
+  await page.keyboard.press('Escape');
+
+  await page.click('.rename-track[data-id="c"]');
+  await page.fill('.inline-rename', 'Chance review');
+  await page.press('.inline-rename', 'Enter');
+  await page.waitForTimeout(250);
+  const renamed = await page.evaluate(async () => (await chrome.storage.local.get('ty')).ty.tracks.c.name);
+  if (renamed !== 'Chance review') throw new Error('Inline rename did not persist');
+
+  await page.evaluate(() => {
+    const source = document.querySelector('.drag-handle[data-id="e"]');
+    const target = document.querySelector('.track-label-group[data-id="b"]');
+    const transfer = new DataTransfer();
+    source.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: transfer }));
+    target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+    target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+    source.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: transfer }));
+  });
+  await page.waitForTimeout(350);
+  const order = await page.evaluate(async () => (await chrome.storage.local.get('ty')).ty.order);
+  if (order.indexOf('e') > order.indexOf('b')) throw new Error('Manual track reorder did not persist');
+
+  await page.click('.details-track[data-id="c"]');
+  await page.click('#details-delete');
+  await page.waitForTimeout(250);
+  if (await page.evaluate(async () => !!(await chrome.storage.local.get('ty')).ty.tracks.c)) throw new Error('Delete did not remove track');
+  await page.click('.toast button');
+  await page.waitForTimeout(250);
+  if (!(await page.evaluate(async () => !!(await chrome.storage.local.get('ty')).ty.tracks.c))) throw new Error('Delete undo did not restore track');
+  await shot(page, '16-notes-reorder');
+  await ctx.close();
+}
+
+// 7. Ten active tracks use vertical space rather than squeezing the rails.
+{
+  const fullYard = structuredClone(seeded);
+  for (const [id, name] of [
+    ['f', 'Launch plan'],
+    ['g', 'Research synthesis'],
+    ['h', 'Quarterly review'],
+    ['i', 'Travel planning'],
+    ['j', 'Kitchen repair'],
+  ]) {
+    fullYard.tracks[id] = t(id, name, { currentStop: '' });
+    fullYard.order.push(id);
+  }
+  const { ctx, page } = await openPanel(fullYard);
+  const yard = await page.locator('#yard').evaluate((el) => ({ scrollHeight: el.scrollHeight, clientHeight: el.clientHeight }));
+  const titleCount = await page.locator('.track-title').count();
+  const addDisabled = await page.locator('#btn-new').isDisabled();
+  if (titleCount !== 10 || yard.scrollHeight <= yard.clientHeight || !addDisabled) {
+    throw new Error(`Ten-track yard failed: ${JSON.stringify({ titleCount, yard, addDisabled })}`);
+  }
+  await page.locator('.track-title[data-id="j"]').scrollIntoViewIfNeeded();
+  await shot(page, '17-ten-track-scroll');
+  await ctx.close();
+}
+
+// 8. Narrow panel: Chrome lets users drag the side panel quite thin
 {
   const { ctx, page } = await openPanel(seeded);
   await page.setViewportSize({ width: 260, height: 700 });

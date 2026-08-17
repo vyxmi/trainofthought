@@ -1,4 +1,4 @@
-# Chrome Web Store listing: Train of Thought v0.1.0
+# Chrome Web Store listing: Train of Thought v0.2.0
 
 ## Product details
 
@@ -12,15 +12,19 @@
 
 Train of Thought is a calm Chrome side panel for switching between trains of thought without losing your place.
 
-Lay a track for each project or thread. Keep one locomotive, your attention, on exactly one track at a time. Before switching, leave a short stop describing where to pick the work back up. When you return, that cue and an optional restorable tab snapshot are waiting for you.
+Lay a track for each project or thread. Keep one locomotive, your attention, on exactly one track at a time. Switch freely, or leave an optional Stop describing where to pick the work back up. When you return, that cue and an optional restorable tab snapshot are waiting for you.
 
 Train of Thought includes:
 
-- A side-panel yard that keeps active, parked, waiting, AI-working, ready, and arrived work legible at a glance
-- A deliberate switch flow that preserves your return point
+- A calm, scrollable yard for three to ten active tracks with persistent manual ordering
+- Optional Stop markers for meaningful return points, while every switch is preserved in Track history
+- Notes you can add to inactive tracks without changing your current track
+- Expandable Track Details with switches, Stops, Notes, ride durations, status changes, and arrival
+- Arrivals history with start time, arrival time, total active time, and full Track history
+- Inline track rename, drag to reorder, and recoverable Delete for unwanted tracks
 - Optional tab snapshots captured only when you leave a track
 - Manual ready signals for work that is waiting on someone or something else
-- Light and dark themes, reduced-motion support, and keyboard shortcuts
+- Daytime and nighttime themes, reduced-motion support, and keyboard shortcuts
 - Local export and erase controls
 
 Privacy is structural: there is no account, server, advertising, or remote code. All data stays in Chrome storage on your device. Optional hostname observation is off by default and starts only if you enable it in Settings. Train of Thought has no host permissions and cannot read page contents.
@@ -62,6 +66,7 @@ No account or credentials are required.
 
 1. Click the toolbar icon to open the Train of Thought side panel.
 2. Enter a track name and choose **lay track**.
-3. Choose **switch tracks**, leave a current stop, and create or select another track.
-4. Select the original track to resume it.
-5. Open Settings to review local-only data controls and the optional, off-by-default hostname observation setting.
+3. Choose **switch tracks**, optionally leave a pickup note, and create or select another track.
+4. Hover an inactive track to add a Note, or click a Stop or Note marker to open Track Details.
+5. Select the original track to resume it, or mark a track Arrived to move it into Arrivals.
+6. Open Settings to review local-only data controls and the optional, off-by-default hostname observation setting.

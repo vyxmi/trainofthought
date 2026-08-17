@@ -13,7 +13,7 @@
  *   ty_events — local analytics ring buffer (append-only, capped, never leaves disk)
  */
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export const K_STATE = 'ty';
 export const K_OBS = 'ty_obs';
@@ -94,8 +94,9 @@ export function defaultState() {
 
 export function newTrack({ name, destination = '' }) {
   const t = Date.now();
+  const id = uid();
   return {
-    id: uid(),
+    id,
     name: String(name || '').trim(),
     /** Optional. The stable goal. Never required. */
     destination: String(destination || '').trim(),
@@ -119,6 +120,8 @@ export function newTrack({ name, destination = '' }) {
     snapshot: null,
     /** Cumulative ms the locomotive has spent on this track. */
     msOnTrack: 0,
+    /** Chronological user-facing history for this track. */
+    events: [{ id: uid(), type: 'created', at: t }],
   };
 }
 
@@ -155,6 +158,50 @@ function migrate(s) {
       s.locomotive = { trackId: activeId, sinceAt: Date.now() };
     }
     s.schemaVersion = 1;
+  }
+  // v1 → v2: track history became a first-class part of each track. Seed
+  // stable synthetic events from durable fields already present on disk.
+  if (s.schemaVersion < 2) {
+    for (const t of Object.values(s.tracks || {})) {
+      if (!Array.isArray(t.events)) {
+        t.events = [{ id: `m-${t.id}-created`, type: 'created', at: t.createdAt || s.createdAt || Date.now() }];
+        if (t.msOnTrack) {
+          t.events.push({
+            id: `m-${t.id}-time`,
+            type: 'carried_time',
+            at: t.updatedAt || t.createdAt || Date.now(),
+            durationMs: t.msOnTrack,
+          });
+        }
+        if (t.leftAt) {
+          t.events.push({
+            id: `m-${t.id}-switch`,
+            type: 'switch',
+            at: t.leftAt,
+            reason: t.leftBecause || LEFT.SWITCHING,
+            toId: null,
+          });
+          if (String(t.currentStop || '').trim()) {
+            t.events.push({
+              id: `m-${t.id}-stop`,
+              type: 'stop',
+              at: t.leftAt,
+              text: String(t.currentStop).trim(),
+              reason: t.leftBecause || LEFT.SWITCHING,
+            });
+          }
+        }
+        if (t.arrivedAt) {
+          t.events.push({
+            id: `m-${t.id}-arrived`,
+            type: 'arrived',
+            at: t.arrivedAt,
+            totalActiveMs: t.msOnTrack || 0,
+          });
+        }
+      }
+    }
+    s.schemaVersion = 2;
   }
   // Fill any gaps introduced by partial writes.
   return { ...defaultState(), ...s, settings: { ...defaultState().settings, ...(s.settings || {}) } };

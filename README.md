@@ -2,7 +2,7 @@
 
 One locomotive, many tracks. A Chrome side panel for switching between trains of thought without losing them.
 
-**V1 scope:** the core loop only: lay a track, work, leave a stop, switch, resume. Plus the minimum railway needed to make state legible at a glance. No junction detection, no prompting, no automation. Optional context observation is off by default and runs only after the user opts in from Settings.
+**V1 scope:** the core loop: lay a track, work, switch, resume, park, and arrive. The yard supports up to ten manually ordered active tracks, lightweight Stops and Notes, per-track history, active ride durations, and an Arrivals archive. Optional context observation is off by default and runs only after the user opts in from Settings.
 
 ---
 
@@ -25,13 +25,17 @@ No build step. Edit a file, hit the reload arrow on the extensions page, reopen 
 |---|---|
 | **Locomotive** | Your attention. There is exactly one. It is on one track or in the shed. |
 | **Track** | A train of thought: a project, a thread, a thing you return to. |
-| **Current stop** | Where you are on that track. It is *also* the re-entry cue: when you leave, this is what you'll read when you come back. One field, not two. |
+| **Current stop** | An optional re-entry cue describing where to pick the work back up. Leaving it blank still records the switch but does not place a Stop marker in the yard. |
 | **Destination** | Optional. The stable goal. Never required to create a track. |
 | **Signal** | The track's state, at the entrance. Tap it to mark a track ready. |
-| **Stop flag** | The marker left standing where the engine was, paired with why you stopped and the optional note you left. The flag and note return you to that track. |
-| **Shed** | Where the locomotive sits when your attention isn't on anything tracked. |
+| **Stop** | A marker left only when you switch or park with a meaningful pickup note. Clicking it opens that event in Track Details. |
+| **Note** | A short thought added to an inactive track without moving the locomotive. Notes use their own marker and history event. |
+| **Shed** | Where the locomotive sits when your attention is not on any track. Park sends it here. |
+| **Arrivals** | Completed tracks, including start and arrival times, total active time, and full Track history. |
 
-States: `active` · `parked` · `waiting` · `ai_working` · `ready` · `arrived`. "Hit a stop" is parked with a red signal rather than a seventh state.
+Track status and Stops are separate. States are `active` · `parked` · `waiting` · `ai_working` · `ready` · `arrived`. A Stop is an event marker, not a status.
+
+Track order is always manual. Rename a title inline, drag its handle to move it, and use Delete in Track Details only for unwanted tracks. Delete offers Undo; Arrived is the normal completion path.
 
 ---
 
@@ -62,7 +66,7 @@ dev/                         Not shipped. Preview harness, chrome mock, icon gen
 
 ## Motion
 
-Four movements, and nothing else moves:
+Motion is brief and mechanical:
 
 | Movement | What it answers |
 |---|---|
@@ -70,6 +74,8 @@ Four movements, and nothing else moves:
 | `layTrack` | this place is new: it was built, not appended |
 | `markReturn` | something was deliberately left, right there |
 | `resumeTo` | you're back, and this is the spot |
+
+The locomotive wheels and rods move only while it travels. A switch blade throws before the locomotive changes track, a Stop pops up, a Note unfolds, and signals react when their state changes. Rails and sleepers remain still so the yard stays calm.
 
 The blade throws *before* the engine moves. That order is the whole difference between a mechanism responding to a decision and a cartoon train sliding around.
 
@@ -113,7 +119,7 @@ Then in `ext/sidepanel/index.html`, before `panel.js`:
 
 ## Reading the results
 
-Settings → **export usage log** gives you the raw local event stream. What to look at, in priority order:
+Settings → **export usage log** gives you the raw local event stream. Track Details separately contains the user-facing chronological history for each track, including switches that did not create Stops, Notes, rides, status changes, and arrival.
 
 **Does the loop work at all?**
 - `track_created` ordinal ≥ 2: did they build a second track, or is this a single-project tool?
@@ -132,6 +138,12 @@ Deliberately not recorded: hours focused, task counts, streaks, anything scoreab
 ---
 
 ## Development
+
+```bash
+npm run dev
+```
+
+opens a browser-ready mock at `http://127.0.0.1:8898/preview` for fast manual iteration. The extension source itself still needs no build step.
 
 ```bash
 node dev/preview.mjs

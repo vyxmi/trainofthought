@@ -11,6 +11,7 @@
 
 import {
   STATUS,
+  STATUS_LABEL,
   LEFT,
   LEFT_LABEL,
   EV,
@@ -42,6 +43,7 @@ let shapeKey = '';
 let editingStop = false;
 let skipNextAnim = false;
 let toastTimer = 0;
+let newMarkerEventIds = new Set();
 
 const motion = new Motion(svgEl);
 
@@ -89,6 +91,41 @@ function ago(ms) {
   return `${Math.round(h / 24)}d ago`;
 }
 
+function duration(ms) {
+  const value = Math.max(0, Number(ms) || 0);
+  if (value < 60_000) return '<1m';
+  const minutes = Math.round(value / 60_000);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const rem = minutes % 60;
+  if (hours < 24) return rem ? `${hours}h ${rem}m` : `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ${hours % 24}h`;
+}
+
+function dateTime(at) {
+  if (!at) return 'not recorded';
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(at));
+}
+
+function totalActiveMs(track, s = state) {
+  let total = track?.msOnTrack || 0;
+  if (track && s?.locomotive?.trackId === track.id && s.locomotive.sinceAt) {
+    total += Math.max(0, Date.now() - s.locomotive.sinceAt);
+  }
+  return total;
+}
+
+function latestEvent(track, type) {
+  return [...(track?.events || [])].reverse().find((event) => event.type === type) || null;
+}
+
 /** Tab snapshots are the one place full URLs are written, and only on purpose. */
 async function captureSnapshot() {
   try {
@@ -133,6 +170,15 @@ function hideToast() {
 
 async function render(next, { animate = true } = {}) {
   const before = state;
+  newMarkerEventIds = new Set();
+  if (before) {
+    for (const id of next.order) {
+      const previous = new Set((before.tracks[id]?.events || []).map((event) => event.id));
+      for (const event of next.tracks[id]?.events || []) {
+        if (!previous.has(event.id) && (event.type === 'note' || event.type === 'stop')) newMarkerEventIds.add(event.id);
+      }
+    }
+  }
   state = next;
   document.documentElement.dataset.theme = next.settings?.theme === 'nighttime' ? 'nighttime' : 'daytime';
   motion.setMode(next.settings?.motion || 'auto');
@@ -150,8 +196,18 @@ async function render(next, { animate = true } = {}) {
   }
 
   syncAspects(handles, layout, next);
+  if (before) {
+    for (const id of next.order) {
+      if (before.tracks[id]?.status === next.tracks[id]?.status) continue;
+      const signal = handles?.rows.get(id)?.signal;
+      if (!signal) continue;
+      signal.classList.add('is-changing');
+      setTimeout(() => signal.classList.remove('is-changing'), 520);
+    }
+  }
   renderLabels(next);
   if (!editingStop) renderNow(next);
+  renderFooter(next);
 
   const consumed = skipNextAnim;
   skipNextAnim = false;
@@ -166,33 +222,48 @@ function renderLabels(s) {
   for (const slot of layout.tracks) {
     const t = s.tracks[slot.id];
     if (!t) continue;
-    const b = document.createElement('button');
-    b.className = ['lbl', t.id === activeId ? 'is-active' : '', stateClass(t)].filter(Boolean).join(' ');
-    b.dataset.id = t.id;
-    b.style.left = `${slot.labelX}px`;
-    b.style.top = `${slot.labelY}px`;
-    b.style.width = `${Math.max(90, layout.width - slot.labelX - 36)}px`;
-    const stop = t.currentStop?.trim() || '';
-    b.innerHTML =
-      `<span class="lbl-head"><span class="lbl-name">${esc(t.name)}</span>` +
-      `<span class="lbl-status">${esc(statusWord(t))}</span></span>`;
-    b.title = t.id === activeId ? `${t.name}: the locomotive is here` : `Resume ${t.name}`;
-    labelsEl.appendChild(b);
+    const group = document.createElement('div');
+    group.className = ['track-label-group', t.id === activeId ? 'is-active' : '', stateClass(t)].filter(Boolean).join(' ');
+    group.dataset.id = t.id;
+    group.style.left = `${Math.max(4, slot.labelX - 18)}px`;
+    group.style.top = `${slot.labelY}px`;
+    group.style.width = `${Math.max(120, layout.width - slot.labelX - 30)}px`;
+    group.innerHTML = `
+      <button class="drag-handle" draggable="true" data-id="${esc(t.id)}" aria-label="Reorder ${esc(t.name)}" title="Drag to reorder">
+        <span></span><span></span><span></span>
+      </button>
+      <button class="track-title" data-id="${esc(t.id)}" title="${t.id === activeId ? 'Current track' : `Switch to ${esc(t.name)}`}">
+        <span class="lbl-name">${esc(t.name)}</span>
+        <span class="lbl-status">${esc(statusWord(t))}</span>
+      </button>
+      <span class="track-tools">
+        ${t.id !== activeId ? `<button class="add-note" data-id="${esc(t.id)}" title="Add a note">+ note</button>` : ''}
+        <button class="rename-track" data-id="${esc(t.id)}" aria-label="Rename ${esc(t.name)}" title="Rename">✎</button>
+        <button class="details-track" data-id="${esc(t.id)}" aria-label="Open details for ${esc(t.name)}" title="Track details">•••</button>
+      </span>`;
+    labelsEl.appendChild(group);
 
-    if (t.id !== activeId && t.leftAt) {
-      const markerCopy = document.createElement('button');
-      markerCopy.type = 'button';
-      markerCopy.className = ['stop-note', stateClass(t)].filter(Boolean).join(' ');
-      markerCopy.dataset.id = t.id;
-      markerCopy.style.left = `${slot.platformX + 15}px`;
-      markerCopy.style.top = `${slot.y - 31}px`;
-      markerCopy.style.width = `${Math.max(80, layout.width - slot.platformX - 48)}px`;
-      const reason = LEFT_LABEL[t.leftBecause] || 'stopped';
-      markerCopy.innerHTML =
-        `<span class="stop-reason">${esc(reason)}</span>` +
-        (stop ? `<span class="stop-copy">${esc(stop)}</span>` : '');
-      markerCopy.title = `Return to ${t.name}`;
-      labelsEl.appendChild(markerCopy);
+    const stopEvent = t.id !== activeId && t.leftAt && t.currentStop?.trim() ? latestEvent(t, 'stop') : null;
+    const noteEvent = t.id !== activeId ? latestEvent(t, 'note') : null;
+    const markerEvents = [stopEvent, noteEvent].filter(Boolean);
+    if (markerEvents.length) {
+      const markers = document.createElement('div');
+      markers.className = 'event-markers';
+      markers.style.left = `${slot.platformX + (stopEvent ? 15 : 0)}px`;
+      markers.style.top = `${slot.y - 31}px`;
+      markers.style.width = `${Math.max(70, layout.width - slot.platformX - 46)}px`;
+      markers.innerHTML = markerEvents
+        .map(
+          (event) => `
+          <button class="event-marker marker-${event.type} ${newMarkerEventIds.has(event.id) ? 'is-new' : ''}"
+                  data-id="${esc(t.id)}" data-event-id="${esc(event.id)}" title="Open in Track Details">
+            <span class="event-icon" aria-hidden="true"></span>
+            <span class="event-kind">${event.type}</span>
+            <span class="event-text">${esc(event.text || '')}</span>
+          </button>`
+        )
+        .join('');
+      labelsEl.appendChild(markers);
     }
   }
 
@@ -205,6 +276,20 @@ function renderLabels(s) {
   d.textContent = 'shed';
   d.title = activeId ? 'Park in the shed' : 'The locomotive is in the shed';
   labelsEl.appendChild(d);
+}
+
+function renderFooter(s) {
+  const arrivals = $('btn-arrivals');
+  if (arrivals) {
+    const count = s.history?.length || 0;
+    arrivals.innerHTML = `arrivals${count ? ` <span>${count}</span>` : ''}`;
+    arrivals.classList.toggle('has-arrivals', count > 0);
+  }
+  const add = $('btn-new');
+  if (add) {
+    add.disabled = s.order.length >= 10;
+    add.title = s.order.length >= 10 ? 'The yard holds up to 10 active tracks' : 'Lay a new track';
+  }
 }
 
 function renderNow(s) {
@@ -309,9 +394,10 @@ async function animateDiff(before, next, rebuilt, allow) {
   // 1 & 4. Switching or resuming.
   if (fromId !== toId) {
     motion.settle(fromId);
-    const wasLeftBehind = toId ? !!before.tracks[toId]?.leftAt : false;
-    if (wasLeftBehind) await motion.resumeTo(fromId, toId);
-    else await motion.switchTracks(fromId, toId);
+    const leaveMarker = !!(fromId && next.tracks[fromId]?.currentStop?.trim());
+    const targetHasStop = !!(toId && before.tracks[toId]?.leftAt && before.tracks[toId]?.currentStop?.trim());
+    if (targetHasStop) await motion.resumeTo(fromId, toId, { leaveMarker });
+    else await motion.switchTracks(fromId, toId, { leaveMarker });
     return;
   }
 
@@ -538,6 +624,10 @@ function openSwitchSheet(mode = 'switch', { jumpToNew = false, initialDest = nul
 
 /** Creating a track asks for a name. Destination is optional and looks optional. */
 function openNewTrackSheet(leave = null) {
+  if (state.order.length >= 10) {
+    toast('The yard holds up to 10 active tracks.');
+    return;
+  }
   openSheet(
     `
     <div class="sheet-step">
@@ -574,6 +664,192 @@ function openNewTrackSheet(leave = null) {
       );
     }
   );
+}
+
+function eventSummary(event) {
+  switch (event.type) {
+    case 'created':
+      return 'Track created';
+    case 'started':
+      return 'First ride started';
+    case 'ride':
+      return `Ride lasted ${duration(event.durationMs)}`;
+    case 'carried_time':
+      return `${duration(event.durationMs)} active time carried forward`;
+    case 'switch':
+      return event.toName ? `Switched to ${event.toName}` : 'Switched tracks';
+    case 'park':
+      return 'Parked the locomotive in the shed';
+    case 'stop':
+      return `Stop: ${event.text || 'No pickup note'}`;
+    case 'resume':
+      return event.fromName ? `Resumed from ${event.fromName}` : 'Resumed from the shed';
+    case 'note':
+      return `Note: ${event.text}`;
+    case 'status':
+      return `Status changed to ${STATUS_LABEL[event.to] || event.to || 'unknown'}`;
+    case 'arrived':
+      return `Arrived with ${duration(event.totalActiveMs)} active time`;
+    case 'reopened':
+      return 'Returned from Arrivals to the yard';
+    case 'renamed':
+      return `Renamed from ${event.from} to ${event.to}`;
+    default:
+      return event.type;
+  }
+}
+
+function openTrackDetails(id, { focusEventId = null } = {}) {
+  const track = state.tracks[id];
+  if (!track) return;
+  const events = [...(track.events || [])].sort((a, b) => a.at - b.at);
+  const arrived = track.status === STATUS.ARRIVED;
+  openSheet(
+    `
+    <div class="details-heading">
+      <div>
+        <div class="eyebrow">${arrived ? 'arrival' : 'track details'}</div>
+        <input class="details-name" id="details-name" value="${esc(track.name)}" aria-label="Track title" />
+        ${track.destination ? `<div class="details-destination">→ ${esc(track.destination)}</div>` : ''}
+      </div>
+      <button class="icon-text-button" data-close>close</button>
+    </div>
+    <div class="track-stats">
+      <div><span>started</span><strong>${esc(dateTime(track.createdAt))}</strong></div>
+      ${arrived ? `<div><span>arrived</span><strong>${esc(dateTime(track.arrivedAt))}</strong></div>` : ''}
+      <div><span>active time</span><strong>${esc(duration(totalActiveMs(track)))}</strong></div>
+    </div>
+    <details class="track-history" open>
+      <summary><span>Track history</span><small>${events.length} event${events.length === 1 ? '' : 's'}</small></summary>
+      <ol class="timeline">
+        ${events
+          .map(
+            (event) => `<li id="event-${esc(event.id)}" class="timeline-event event-${esc(event.type)}">
+              <span class="timeline-mark" aria-hidden="true"></span>
+              <div><strong>${esc(eventSummary(event))}</strong><time>${esc(dateTime(event.at))}</time></div>
+            </li>`
+          )
+          .join('')}
+      </ol>
+    </details>
+    <div class="sheet-actions details-actions">
+      <button class="btn btn-danger" id="details-delete">delete track</button>
+      <span class="spacer"></span>
+      <button class="btn" data-close>done</button>
+    </div>`,
+    () => {
+      const name = $('details-name');
+      let savedName = track.name;
+      const saveName = async () => {
+        const value = name.value.trim();
+        if (!value || value === savedName) {
+          name.value = savedName;
+          return;
+        }
+        savedName = value;
+        await T.editTrack(id, { name: value });
+      };
+      name.onblur = saveName;
+      name.onkeydown = (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          name.blur();
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          name.value = savedName;
+          name.blur();
+        }
+      };
+      $('details-delete').onclick = () => deleteTrackWithUndo(id);
+      if (focusEventId) {
+        requestAnimationFrame(() => {
+          const target = document.getElementById(`event-${focusEventId}`);
+          target?.classList.add('is-focused');
+          target?.scrollIntoView({ block: 'center' });
+        });
+      }
+    }
+  );
+}
+
+function openNoteSheet(id) {
+  const track = state.tracks[id];
+  if (!track || track.status === STATUS.ACTIVE || track.status === STATUS.ARRIVED) return;
+  openSheet(
+    `
+    <div class="sheet-step">
+      <h3>Add a note to <strong class="track-inline">${esc(track.name)}</strong></h3>
+      <textarea id="note-text" rows="3" maxlength="180" placeholder="One thought to keep with this track"></textarea>
+      <div class="field-counter"><span id="note-count">0</span>/180</div>
+    </div>
+    <div class="sheet-actions">
+      <button class="btn btn-quiet" data-close>cancel</button>
+      <span class="spacer"></span>
+      <button class="btn btn-primary" id="note-save" disabled>add note</button>
+    </div>`,
+    () => {
+      const input = $('note-text');
+      const save = $('note-save');
+      const updateCount = () => {
+        $('note-count').textContent = String(input.value.length);
+        save.disabled = !input.value.trim();
+      };
+      input.oninput = updateCount;
+      input.onkeydown = (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          if (!save.disabled) save.click();
+        }
+      };
+      save.onclick = async () => {
+        const text = input.value.trim();
+        if (!text) return;
+        closeSheet();
+        await T.addNote(id, text);
+      };
+      input.focus();
+    }
+  );
+}
+
+function openArrivals() {
+  const arrivals = (state.history || []).map((id) => state.tracks[id]).filter(Boolean);
+  openSheet(
+    `
+    <div class="details-heading">
+      <div><div class="eyebrow">archive</div><h2>Arrivals</h2></div>
+      <button class="icon-text-button" data-close>close</button>
+    </div>
+    ${
+      arrivals.length
+        ? `<div class="arrivals-list">${arrivals
+            .map(
+              (track) => `<button class="arrival-row" data-arrival-id="${esc(track.id)}">
+                <span class="arrival-main"><strong>${esc(track.name)}</strong>${track.destination ? `<small>${esc(track.destination)}</small>` : ''}</span>
+                <span class="arrival-times"><span>${esc(dateTime(track.createdAt))}</span><strong>${esc(duration(track.msOnTrack))}</strong></span>
+              </button>`
+            )
+            .join('')}</div>`
+        : `<div class="arrivals-empty"><strong>No arrivals yet.</strong><span>Completed tracks will wait here with their full history.</span></div>`
+    }`,
+    () => {
+      sheetEl.querySelectorAll('[data-arrival-id]').forEach((button) => {
+        button.onclick = () => openTrackDetails(button.dataset.arrivalId);
+      });
+    }
+  );
+}
+
+async function deleteTrackWithUndo(id) {
+  const track = state.tracks[id];
+  if (!track) return;
+  const saved = structuredClone(track);
+  const orderIndex = state.order.indexOf(id);
+  const historyIndex = state.history.indexOf(id);
+  closeSheet();
+  await T.removeTrack(id);
+  toast(`${track.name} deleted.`, 'undo', () => T.restoreTrack({ track: saved, orderIndex, historyIndex }));
 }
 
 function openSettings() {
@@ -726,6 +1002,41 @@ async function doRestore() {
   toast(`Reopened ${tabs.length} tab${tabs.length === 1 ? '' : 's'}.`);
 }
 
+function beginInlineRename(id) {
+  const track = state.tracks[id];
+  const group = labelsEl.querySelector(`.track-label-group[data-id="${CSS.escape(id)}"]`);
+  const title = group?.querySelector('.track-title');
+  if (!track || !title) return;
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'inline-rename';
+  input.value = track.name;
+  input.maxLength = 80;
+  title.replaceWith(input);
+  input.focus();
+  input.select();
+  let finished = false;
+  const finish = async (save) => {
+    if (finished) return;
+    finished = true;
+    const value = input.value.trim();
+    if (save && value && value !== track.name) await T.editTrack(id, { name: value });
+    else renderLabels(state);
+  };
+  input.onblur = () => finish(true);
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      input.blur();
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      input.onblur = null;
+      finish(false);
+    }
+  };
+}
+
 /** Tapping a signal is how you say "this is ready now". */
 async function onSignal(id) {
   const t = state.tracks[id];
@@ -754,8 +1065,8 @@ function onPickTrack(id) {
 svgEl.addEventListener('click', (e) => {
   const sig = e.target.closest?.('[data-action="signal"]');
   if (sig) return onSignal(sig.dataset.id);
-  const mk = e.target.closest?.('[data-action="resume"]');
-  if (mk) return onPickTrack(mk.dataset.id);
+  const event = e.target.closest?.('[data-action="event"]');
+  if (event) return openTrackDetails(event.dataset.id, { focusEventId: event.dataset.eventId });
   const depot = e.target.closest?.('[data-action="depot"]');
   if (depot && T.activeTrack(state)) return openSwitchSheet('park');
 });
@@ -766,22 +1077,74 @@ svgEl.addEventListener('keydown', (e) => {
   if (!el) return;
   e.preventDefault();
   if (el.dataset.action === 'signal') onSignal(el.dataset.id);
+  else if (el.dataset.action === 'event') openTrackDetails(el.dataset.id, { focusEventId: el.dataset.eventId });
   else if (el.dataset.action === 'depot') {
     if (T.activeTrack(state)) openSwitchSheet('park');
   } else onPickTrack(el.dataset.id);
 });
 
 labelsEl.addEventListener('click', (e) => {
-  const lbl = e.target.closest?.('.lbl, .stop-note');
-  if (lbl) onPickTrack(lbl.dataset.id);
+  const event = e.target.closest?.('.event-marker');
+  if (event) return openTrackDetails(event.dataset.id, { focusEventId: event.dataset.eventId });
+  const note = e.target.closest?.('.add-note');
+  if (note) return openNoteSheet(note.dataset.id);
+  const rename = e.target.closest?.('.rename-track');
+  if (rename) return beginInlineRename(rename.dataset.id);
+  const details = e.target.closest?.('.details-track');
+  if (details) return openTrackDetails(details.dataset.id);
+  const title = e.target.closest?.('.track-title');
+  if (title) return onPickTrack(title.dataset.id);
   const depot = e.target.closest?.('[data-action="depot"]');
   if (depot && T.activeTrack(state)) openSwitchSheet('park');
 });
 
+let draggingTrackId = null;
+labelsEl.addEventListener('dragstart', (e) => {
+  const handle = e.target.closest?.('.drag-handle');
+  if (!handle) return;
+  draggingTrackId = handle.dataset.id;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', draggingTrackId);
+  handle.closest('.track-label-group')?.classList.add('is-dragging');
+});
+
+labelsEl.addEventListener('dragover', (e) => {
+  const target = e.target.closest?.('.track-label-group');
+  if (!target || !draggingTrackId || target.dataset.id === draggingTrackId) return;
+  e.preventDefault();
+  target.classList.add('is-drop-target');
+});
+
+labelsEl.addEventListener('dragleave', (e) => {
+  e.target.closest?.('.track-label-group')?.classList.remove('is-drop-target');
+});
+
+labelsEl.addEventListener('drop', async (e) => {
+  const target = e.target.closest?.('.track-label-group');
+  if (!target || !draggingTrackId || target.dataset.id === draggingTrackId) return;
+  e.preventDefault();
+  const ids = [...state.order];
+  const from = ids.indexOf(draggingTrackId);
+  const to = ids.indexOf(target.dataset.id);
+  if (from < 0 || to < 0) return;
+  const [moved] = ids.splice(from, 1);
+  ids.splice(to, 0, moved);
+  draggingTrackId = null;
+  labelsEl.querySelectorAll('.is-drop-target, .is-dragging').forEach((el) => el.classList.remove('is-drop-target', 'is-dragging'));
+  await T.reorder(ids);
+});
+
+labelsEl.addEventListener('dragend', () => {
+  draggingTrackId = null;
+  labelsEl.querySelectorAll('.is-drop-target, .is-dragging').forEach((el) => el.classList.remove('is-drop-target', 'is-dragging'));
+});
+
 $('btn-new').onclick = () => {
+  if (state?.order?.length >= 10) return toast('The yard holds up to 10 active tracks.');
   if (!state?.order?.length) return openNewTrackSheet(null);
   openSwitchSheet('switch', { jumpToNew: true });
 };
+$('btn-arrivals').onclick = openArrivals;
 $('btn-settings').onclick = openSettings;
 
 let resizeTimer = 0;
