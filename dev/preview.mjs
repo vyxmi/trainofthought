@@ -171,7 +171,7 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.p
   const { ctx, page } = await openPanel(seeded, { dark: true });
   await shot(page, '04-yard-dark');
   const currentStopHeader = await page.locator('.now-current').textContent();
-  if (!currentStopHeader.includes('current stop') || !currentStopHeader.includes('2 HR 45 MIN')) {
+  if (!currentStopHeader.toLowerCase().includes('current stop') || !currentStopHeader.toLowerCase().includes('on track · 15m')) {
     throw new Error(`Current Stop header is wrong: ${currentStopHeader}`);
   }
   if (await page.locator('.now-restore').count()) throw new Error('Removed tab snapshot UI is still visible');
@@ -190,18 +190,17 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.p
     rail: getComputedStyle(document.querySelector('.row.is-active .sleepers')).animationName,
     wheel: getComputedStyle(document.querySelector('.loco .wheel')).animationName,
     glint: getComputedStyle(document.querySelector('.row.is-active .railhead')).animationName,
+    direction: document.querySelector('.loco-direction').getAttribute('transform'),
   }));
-  if (
-    !idleMotion.loco.includes('locomotive-idle') ||
-    !idleMotion.rail.includes('active-track-drift') ||
-    !idleMotion.wheel.includes('idle-wheel') ||
-    !idleMotion.glint.includes('active-rail-glint')
-  ) {
-    throw new Error(`Idle micro-motion is missing: ${JSON.stringify(idleMotion)}`);
+  if ([idleMotion.loco, idleMotion.rail, idleMotion.wheel, idleMotion.glint].some((name) => name !== 'none')) {
+    throw new Error(`The calm yard still has continuous idle motion: ${JSON.stringify(idleMotion)}`);
+  }
+  if (idleMotion.direction !== 'scale(-1 1)') {
+    throw new Error(`The locomotive is not facing left-to-right: ${JSON.stringify(idleMotion)}`);
   }
   await page.click('.details-track[data-id="a"]');
   const detailStyle = await page.evaluate(() => {
-    const name = document.querySelector('.details-name');
+    const name = document.querySelector('.details-heading h2');
     return { nameColor: getComputedStyle(name).color };
   });
   if (detailStyle.nameColor === 'rgb(0, 0, 0)') throw new Error('Track Details title is black in nighttime mode');
@@ -235,6 +234,23 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.p
   if (!multilineStop.includes('\n')) throw new Error('Shift+Enter did not add a newline to the pickup note');
   await page.click('[data-dest="d"]');
   await page.keyboard.press('Enter');
+  await page.waitForSelector('.rail-svg.is-moving');
+  const bladeFirst = await page.evaluate(() => ({
+    blade: !!document.querySelector('.blade.is-thrown'),
+    running: document.querySelector('.rail-svg').classList.contains('is-running'),
+    wheel: getComputedStyle(document.querySelector('.loco .wheel')).animationName,
+  }));
+  if (!bladeFirst.blade || bladeFirst.running || bladeFirst.wheel !== 'none') {
+    throw new Error(`The switch blade did not move before the locomotive: ${JSON.stringify(bladeFirst)}`);
+  }
+  await page.waitForSelector('.rail-svg.is-running');
+  const runningMotion = await page.evaluate(() => ({
+    wheel: getComputedStyle(document.querySelector('.loco .wheel')).animationName,
+    rod: getComputedStyle(document.querySelector('.loco .rod')).animationName,
+  }));
+  if (!runningMotion.wheel.includes('wheel-roll') || !runningMotion.rod.includes('rod-pump')) {
+    throw new Error(`Travel mechanics are not animated: ${JSON.stringify(runningMotion)}`);
+  }
   // Sample the run so the arc through the turnouts can actually be inspected.
   for (const [i, ms] of [180, 160, 160, 200].entries()) {
     await page.waitForTimeout(ms);
@@ -243,13 +259,13 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.p
   await page.waitForTimeout(1400);
   await shot(page, '07-switch-done');
 
-  const portfolioStop = await page.locator('.event-marker.marker-stop[data-id="a"]').textContent();
-  if (!portfolioStop.includes('stop') || !portfolioStop.includes('Write deposit-flow results') || portfolioStop.includes('AI working')) {
+  const portfolioStop = await page.locator('.event-marker.marker-stop[data-id="a"].is-latest').textContent();
+  if (!portfolioStop.includes('Write deposit-flow results') || portfolioStop.includes('AI working')) {
     throw new Error('Stop marker does not show a note independently from track status');
   }
-  await page.click('.event-marker.marker-stop[data-id="a"]');
-  const focusedStop = await page.locator('.timeline-event.is-focused').textContent();
-  if (!focusedStop.includes('Stop: Write deposit-flow results')) throw new Error('Stop marker did not open its event in Track Details');
+  await page.click('.event-marker.marker-stop[data-id="a"].is-latest');
+  const focusedStop = await page.locator('.marker-inspect-text').textContent();
+  if (!focusedStop.includes('Write deposit-flow results')) throw new Error('Stop marker did not open its inspector');
   await page.keyboard.press('Escape');
 
   const after = await page.evaluate(async () => {
@@ -324,9 +340,9 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.p
   const arrivalText = await page.locator('.arrival-row[data-arrival-id="a"]').textContent();
   if (!arrivalText.includes('Portfolio')) throw new Error('Arrived track is missing from Arrivals');
   await page.click('.arrival-row[data-arrival-id="a"]');
-  const arrivalHistory = await page.locator('.track-history').textContent();
-  if (!arrivalHistory.includes('Track created') || !arrivalHistory.includes('Arrived with')) {
-    throw new Error('Arrivals did not preserve the complete Track history');
+  const arrivalHistory = (await page.locator('.episode-track').textContent()).toLowerCase();
+  if (!arrivalHistory.includes('track started') || !arrivalHistory.includes('arrived')) {
+    throw new Error('Arrivals did not preserve the cognitive timeline');
   }
   await shot(page, '13b-arrival-details');
   await ctx.close();
@@ -350,9 +366,17 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.p
   await page.waitForTimeout(1800);
   const resumed = await page.evaluate(async () => ({
     loco: (await chrome.storage.local.get('ty')).ty.locomotive.trackId,
+    stopPassed: !!(await chrome.storage.local.get('ty')).ty.tracks.b.events.find(
+      (event) => event.type === 'stop'
+    )?.passedAt,
     bMarkerHidden: document.querySelector('.row[data-id="b"] .marker').classList.contains('is-hidden'),
   }));
-  console.log('after resume:', JSON.stringify(resumed), resumed.loco === 'b' && resumed.bMarkerHidden ? 'OK' : 'BAD');
+  console.log(
+    'after resume:',
+    JSON.stringify(resumed),
+    resumed.loco === 'b' && resumed.bMarkerHidden && resumed.stopPassed ? 'OK' : 'BAD'
+  );
+  if (!resumed.stopPassed) throw new Error('Resumed Stop was not marked as passed');
   await shot(page, '15-resumed');
 
   // The shed drawing and its label both expose the same park action. The label
@@ -362,6 +386,14 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.p
   console.log('shed click selects park:', depotSelected ? 'OK' : 'BAD');
   if (!depotSelected) throw new Error('Clicking the shed did not preselect park');
   await page.click('#sw-go');
+  await page.waitForSelector('.depot.is-open');
+  const shedDoors = await page.evaluate(() => ({
+    left: document.querySelector('.shed-door-left').getAttribute('transform'),
+    right: document.querySelector('.shed-door-right').getAttribute('transform'),
+  }));
+  if (shedDoors.left === 'translate(0 0)' || shedDoors.right === 'translate(0 0)') {
+    throw new Error(`The shed doors did not open for parking: ${JSON.stringify(shedDoors)}`);
+  }
   await page.waitForTimeout(1800);
   const parked = await page.evaluate(async () => (await chrome.storage.local.get('ty')).ty.locomotive.trackId);
   console.log('shed enter parks:', parked === null ? 'OK' : 'BAD');
@@ -369,7 +401,7 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.p
   await ctx.close();
 }
 
-// 6. Stops, Notes, rename, reorder, details, and recoverable delete
+// 6. Stops, Notes, inline editing, fixed order, details, and recoverable delete
 {
   const plain = structuredClone(seeded);
   plain.tracks.a.currentStop = '';
@@ -393,49 +425,96 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.p
 
 {
   const { ctx, page } = await openPanel(seeded);
-  await page.click('.add-note[data-id="c"]');
-  await page.fill('#note-text', 'Remember the API edge case');
-  await page.click('#note-save');
-  await page.waitForTimeout(350);
-  if (!(await page.locator('.event-marker.marker-note[data-id="c"]').count())) throw new Error('Note marker was not created');
-  await page.click('.event-marker.marker-note[data-id="c"]');
-  if (!(await page.locator('.timeline-event.is-focused').textContent()).includes('Remember the API edge case')) {
-    throw new Error('Note marker did not open its Track Details event');
+  // The current track's key fields edit in place, and not in Track Details.
+  await page.click('#now-name-btn');
+  await page.fill('input.now-name', 'Portfolio review');
+  await page.press('input.now-name', 'Enter');
+  await page.click('#now-dest-btn');
+  await page.fill('input.now-dest', 'Publish the case study');
+  await page.press('input.now-dest', 'Enter');
+  await page.click('#stop-btn');
+  await page.fill('textarea.now-stop', 'Tighten the results section');
+  await page.press('textarea.now-stop', 'Enter');
+  await page.waitForTimeout(250);
+  const inline = await page.evaluate(async () => {
+    const track = (await chrome.storage.local.get('ty')).ty.tracks.a;
+    return { name: track.name, destination: track.destination, stop: track.currentStop };
+  });
+  if (
+    inline.name !== 'Portfolio review' ||
+    inline.destination !== 'Publish the case study' ||
+    inline.stop !== 'Tighten the results section'
+  ) {
+    throw new Error(`Inline current-track editing failed: ${JSON.stringify(inline)}`);
+  }
+
+  // Build enough history to prove the yard caps markers while preserving all
+  // events in the track timeline.
+  for (const text of ['Remember the API edge case', 'Check empty state', 'Ask Maya about copy', 'Verify mobile width']) {
+    await page.click('.add-note[data-id="c"]');
+    await page.fill('#note-text', text);
+    await page.click('#note-save');
+    await page.waitForTimeout(120);
+  }
+  const markerCounts = {
+    total: await page.locator('.event-marker[data-id="c"]').count(),
+    latest: await page.locator('.event-marker[data-id="c"].is-latest').count(),
+    compact: await page.locator('.event-marker[data-id="c"].is-compact').count(),
+  };
+  if (markerCounts.total !== 4 || markerCounts.latest !== 1 || markerCounts.compact !== 3) {
+    throw new Error(`Marker cap or hierarchy is wrong: ${JSON.stringify(markerCounts)}`);
+  }
+  await page.locator('.event-marker[data-id="c"].is-compact').first().hover();
+  const compactReveal = await page.locator('.event-marker[data-id="c"].is-compact').first().locator('time').evaluate(
+    (time) => getComputedStyle(time).display
+  );
+  if (compactReveal !== 'block') throw new Error('Older marker hover did not reveal its timestamp');
+  await page.click('.event-marker.marker-note[data-id="c"].is-latest');
+  if (!(await page.locator('.marker-inspect-text').textContent()).includes('Verify mobile width')) {
+    throw new Error('Note marker did not open its inspector');
+  }
+  await page.click('#marker-continue');
+  await page.click('#sw-go');
+  await page.waitForTimeout(1500);
+  const continued = await page.evaluate(async () => {
+    const next = (await chrome.storage.local.get('ty')).ty;
+    return { active: next.locomotive.trackId, stop: next.tracks.c.currentStop, order: next.order };
+  });
+  if (
+    continued.active !== 'c' ||
+    continued.stop !== 'Verify mobile width' ||
+    continued.order.join(',') !== seeded.order.join(',')
+  ) {
+    throw new Error(`Continue from Note failed: ${JSON.stringify(continued)}`);
+  }
+
+  await page.click('.event-marker.marker-note[data-id="c"].is-latest');
+  await page.click('#marker-resolve');
+  await page.waitForTimeout(200);
+  const resolved = await page.evaluate(async () => {
+    const events = (await chrome.storage.local.get('ty')).ty.tracks.c.events;
+    return events.findLast((event) => event.type === 'note').resolvedAt;
+  });
+  if (!resolved || !(await page.locator('.event-marker.marker-note[data-id="c"].is-resolved').count())) {
+    throw new Error('Resolving a Note did not preserve it in a quieter state');
+  }
+
+  if (await page.locator('.drag-handle').count()) throw new Error('The removed drag UI is still visible');
+  await page.click('.details-track[data-id="c"]');
+  if (await page.locator('.details-heading input').count()) throw new Error('Editing is still buried in Track Details');
+  const episodeText = (await page.locator('.episode-track').textContent()).toLowerCase();
+  if (!episodeText.includes('note:') || episodeText.includes('status changed')) {
+    throw new Error(`Track Details is not a meaningful railway timeline: ${episodeText}`);
   }
   await page.waitForTimeout(250);
-  await shot(page, '16a-note-details');
-  await page.keyboard.press('Escape');
-
-  if (await page.locator('.rename-track').count()) throw new Error('Rename is still in the track menu');
-  await page.click('.details-track[data-id="c"]');
-  await page.fill('#details-name', 'Chance review');
-  await page.press('#details-name', 'Enter');
-  await page.waitForTimeout(250);
-  const renamed = await page.evaluate(async () => (await chrome.storage.local.get('ty')).ty.tracks.c.name);
-  if (renamed !== 'Chance review') throw new Error('Track Details rename did not persist');
-  await page.keyboard.press('Escape');
-
-  await page.evaluate(() => {
-    const source = document.querySelector('.drag-handle[data-id="e"]');
-    const target = document.querySelector('.track-label-group[data-id="b"]');
-    const transfer = new DataTransfer();
-    source.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: transfer }));
-    target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: transfer }));
-    target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
-    source.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: transfer }));
-  });
-  await page.waitForTimeout(350);
-  const order = await page.evaluate(async () => (await chrome.storage.local.get('ty')).ty.order);
-  if (order.indexOf('e') > order.indexOf('b')) throw new Error('Manual track reorder did not persist');
-
-  await page.click('.details-track[data-id="c"]');
+  await shot(page, '16a-cognitive-timeline');
   await page.click('#details-delete');
   await page.waitForTimeout(250);
   if (await page.evaluate(async () => !!(await chrome.storage.local.get('ty')).ty.tracks.c)) throw new Error('Delete did not remove track');
   await page.click('.toast button');
   await page.waitForTimeout(250);
   if (!(await page.evaluate(async () => !!(await chrome.storage.local.get('ty')).ty.tracks.c))) throw new Error('Delete undo did not restore track');
-  await shot(page, '16-notes-reorder');
+  await shot(page, '16-notes-fixed-order');
   await ctx.close();
 }
 
