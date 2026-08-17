@@ -1,4 +1,4 @@
-# Chrome Web Store listing: Train of Thought v0.2.1
+# Chrome Web Store listing: Train of Thought v0.2.2
 
 ## Product details
 

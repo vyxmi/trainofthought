@@ -170,10 +170,21 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.p
 {
   const { ctx, page } = await openPanel(seeded, { dark: true });
   await shot(page, '04-yard-dark');
-  const stopDuration = await page.locator('.now-stop-duration').textContent();
-  if (!stopDuration.includes('current stop')) throw new Error('Current Stop duration is missing from the top panel');
+  const currentStopHeader = await page.locator('.now-current').textContent();
+  if (!currentStopHeader.includes('current stop') || !currentStopHeader.includes('2 HR 45 MIN')) {
+    throw new Error(`Current Stop header is wrong: ${currentStopHeader}`);
+  }
   if (await page.locator('.now-restore').count()) throw new Error('Removed tab snapshot UI is still visible');
   if ((await page.locator('.now-actions .action-icon').count()) !== 3) throw new Error('Action icons are missing');
+  if ((await page.locator('.now-actions .btn-quiet').count()) !== 3) throw new Error('Top actions do not share the quiet style');
+  const statusAlignment = await page.evaluate(() => {
+    const group = document.querySelector('.track-label-group[data-id="b"]');
+    const status = group.querySelector('.lbl-status');
+    const a = group.getBoundingClientRect();
+    const b = status.getBoundingClientRect();
+    return Math.round(a.right - b.right);
+  });
+  if (statusAlignment > 6) throw new Error(`Track status is not right-aligned: ${statusAlignment}px gap`);
   const idleMotion = await page.evaluate(() => ({
     loco: getComputedStyle(document.querySelector('.loco-idle')).animationName,
     rail: getComputedStyle(document.querySelector('.row.is-active .sleepers')).animationName,
@@ -184,11 +195,19 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.p
   await page.click('.details-track[data-id="a"]');
   const detailStyle = await page.evaluate(() => {
     const name = document.querySelector('.details-name');
-    const stat = document.querySelector('.track-stats > div');
-    return { nameColor: getComputedStyle(name).color, statBackground: getComputedStyle(stat).backgroundColor };
+    return { nameColor: getComputedStyle(name).color };
   });
   if (detailStyle.nameColor === 'rgb(0, 0, 0)') throw new Error('Track Details title is black in nighttime mode');
-  if (detailStyle.statBackground !== 'rgba(0, 0, 0, 0)') throw new Error('Track stats still look like input boxes');
+  if (await page.locator('.track-stats').count()) throw new Error('Unhelpful Track Details stats are still visible');
+  await page.click('#details-delete');
+  const toastStyle = await page.locator('.toast').evaluate((el) => ({
+    background: getComputedStyle(el).backgroundColor,
+    color: getComputedStyle(el).color,
+  }));
+  if (toastStyle.background === 'rgb(247, 243, 234)' || toastStyle.background === 'rgb(255, 255, 255)') {
+    throw new Error(`Undo toast is still light in nighttime mode: ${JSON.stringify(toastStyle)}`);
+  }
+  await page.click('.toast button');
   await ctx.close();
 }
 
@@ -291,6 +310,10 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.p
   await page.waitForTimeout(1600);
   await shot(page, '13-arrived');
   await page.click('#btn-arrivals');
+  if ((await page.locator('.details-heading .eyebrow').textContent()).trim().toLowerCase() !== 'arrivals') {
+    throw new Error('Arrivals sheet eyebrow is not ARRIVALS');
+  }
+  if (await page.locator('.details-heading h2').count()) throw new Error('Redundant Arrivals title is still visible');
   const arrivalText = await page.locator('.arrival-row[data-arrival-id="a"]').textContent();
   if (!arrivalText.includes('Portfolio')) throw new Error('Arrived track is missing from Arrivals');
   await page.click('.arrival-row[data-arrival-id="a"]');
@@ -376,12 +399,14 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.p
   await shot(page, '16a-note-details');
   await page.keyboard.press('Escape');
 
-  await page.click('.rename-track[data-id="c"]');
-  await page.fill('.inline-rename', 'Chance review');
-  await page.press('.inline-rename', 'Enter');
+  if (await page.locator('.rename-track').count()) throw new Error('Rename is still in the track menu');
+  await page.click('.details-track[data-id="c"]');
+  await page.fill('#details-name', 'Chance review');
+  await page.press('#details-name', 'Enter');
   await page.waitForTimeout(250);
   const renamed = await page.evaluate(async () => (await chrome.storage.local.get('ty')).ty.tracks.c.name);
-  if (renamed !== 'Chance review') throw new Error('Inline rename did not persist');
+  if (renamed !== 'Chance review') throw new Error('Track Details rename did not persist');
+  await page.keyboard.press('Escape');
 
   await page.evaluate(() => {
     const source = document.querySelector('.drag-handle[data-id="e"]');

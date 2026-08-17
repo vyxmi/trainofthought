@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Train of Thought",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "One locomotive, many tracks. Switch context without losing your train of thought.",
   "minimum_chrome_version": "116",
 

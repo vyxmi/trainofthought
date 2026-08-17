@@ -129,6 +129,14 @@ function stopDurationMs(track) {
   return Math.max(0, end - track.leftAt);
 }
 
+function stopDurationLabel(ms) {
+  const minutes = Math.max(1, Math.round(Math.max(0, Number(ms) || 0) / 60_000));
+  if (minutes < 60) return `${minutes} MIN`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `${hours} HR ${rest} MIN` : `${hours} HR`;
+}
+
 function latestEvent(track, type) {
   return [...(track?.events || [])].reverse().find((event) => event.type === type) || null;
 }
@@ -246,7 +254,6 @@ function renderLabels(s) {
       </button>
       <span class="track-tools">
         ${t.id !== activeId ? `<button class="add-note" data-id="${esc(t.id)}" title="Add a note">+ note</button>` : ''}
-        <button class="rename-track" data-id="${esc(t.id)}" aria-label="Rename ${esc(t.name)}" title="Rename">✎</button>
         <button class="details-track" data-id="${esc(t.id)}" aria-label="Open details for ${esc(t.name)}" title="Track details">•••</button>
       </span>`;
     labelsEl.appendChild(group);
@@ -359,16 +366,17 @@ function renderNow(s) {
   const stopMs = hasStop ? stopDurationMs(cur) : 0;
 
   nowEl.innerHTML = `
-    <div class="eyebrow">now</div>
+    <div class="eyebrow now-current"><span>current stop</span><i class="eyebrow-line"></i>${
+      stopMs ? `<strong>${esc(stopDurationLabel(stopMs))}</strong>` : ''
+    }</div>
     <h1 class="now-name">${esc(cur.name)}</h1>
     ${cur.destination ? `<div class="now-dest">→ ${esc(cur.destination)}</div>` : ''}
-    ${stopMs ? `<div class="now-stop-duration"><span>current stop</span><strong>${esc(duration(stopMs))}</strong></div>` : ''}
     <button class="now-stop ${hasStop ? '' : 'is-empty'}" id="stop-btn" title="Click to edit">${
       hasStop ? esc(cur.currentStop) : 'What are you doing right now?'
     }</button>
     <div class="now-actions">
-      <button class="btn action-button" data-act="switch">${actionLabel('switch', 'switch tracks')}</button>
-      <button class="btn action-button" data-act="park">${actionLabel('park', 'park')}</button>
+      <button class="btn btn-quiet action-button" data-act="switch">${actionLabel('switch', 'switch tracks')}</button>
+      <button class="btn btn-quiet action-button" data-act="park">${actionLabel('park', 'park')}</button>
       <button class="btn btn-quiet action-button" data-act="arrived">${actionLabel('arrived', 'arrived')}</button>
     </div>`;
   wireNow();
@@ -732,11 +740,6 @@ function openTrackDetails(id, { focusEventId = null } = {}) {
       </div>
       <button class="icon-text-button" data-close>close</button>
     </div>
-    <div class="track-stats">
-      <div><span>started</span><strong>${esc(dateTime(track.createdAt))}</strong></div>
-      ${arrived ? `<div><span>arrived</span><strong>${esc(dateTime(track.arrivedAt))}</strong></div>` : ''}
-      <div><span>active time</span><strong>${esc(duration(totalActiveMs(track)))}</strong></div>
-    </div>
     <details class="track-history" open>
       <summary><span>Track history</span><small>${events.length} event${events.length === 1 ? '' : 's'}</small></summary>
       <ol class="timeline">
@@ -836,7 +839,7 @@ function openArrivals() {
   openSheet(
     `
     <div class="details-heading">
-      <div><div class="eyebrow">archive</div><h2>Arrivals</h2></div>
+      <div><div class="eyebrow">arrivals</div></div>
       <button class="icon-text-button" data-close>close</button>
     </div>
     ${
@@ -1002,41 +1005,6 @@ async function doArrive() {
   }
 }
 
-function beginInlineRename(id) {
-  const track = state.tracks[id];
-  const group = labelsEl.querySelector(`.track-label-group[data-id="${CSS.escape(id)}"]`);
-  const title = group?.querySelector('.track-title');
-  if (!track || !title) return;
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.className = 'inline-rename';
-  input.value = track.name;
-  input.maxLength = 80;
-  title.replaceWith(input);
-  input.focus();
-  input.select();
-  let finished = false;
-  const finish = async (save) => {
-    if (finished) return;
-    finished = true;
-    const value = input.value.trim();
-    if (save && value && value !== track.name) await T.editTrack(id, { name: value });
-    else renderLabels(state);
-  };
-  input.onblur = () => finish(true);
-  input.onkeydown = (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      input.blur();
-    }
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      input.onblur = null;
-      finish(false);
-    }
-  };
-}
-
 /** Tapping a signal is how you say "this is ready now". */
 async function onSignal(id) {
   const t = state.tracks[id];
@@ -1088,8 +1056,6 @@ labelsEl.addEventListener('click', (e) => {
   if (event) return openTrackDetails(event.dataset.id, { focusEventId: event.dataset.eventId });
   const note = e.target.closest?.('.add-note');
   if (note) return openNoteSheet(note.dataset.id);
-  const rename = e.target.closest?.('.rename-track');
-  if (rename) return beginInlineRename(rename.dataset.id);
   const details = e.target.closest?.('.details-track');
   if (details) return openTrackDetails(details.dataset.id);
   const title = e.target.closest?.('.track-title');
