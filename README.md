@@ -2,7 +2,7 @@
 
 One locomotive, many tracks. A Chrome side panel for switching between trains of thought without losing them.
 
-**V1 scope:** the core loop: lay a track, work, switch, resume, park, and arrive. The yard supports up to ten fixed-order active tracks, multiple Stops and Notes, compact cognitive timelines, active ride durations, and an Arrivals archive. Optional context observation is off by default and runs only after the user opts in from Settings.
+**V1 scope:** the core loop: lay a track, work, switch, resume, park, and arrive. The yard supports up to ten reorderable active tracks, one current Stop plus unresolved Notes per track, one-level subtracks, optional per-track timeboxes, compact cognitive timelines, active ride durations, and an Arrivals archive. Optional context observation is off by default and runs only after the user opts in from Settings.
 
 ---
 
@@ -27,15 +27,17 @@ No build step. Edit a file, hit the reload arrow on the extensions page, reopen 
 | **Track** | A train of thought: a project, a thread, a thing you return to. |
 | **Current stop** | An optional re-entry cue describing where to pick the work back up. Leaving it blank still records the switch but does not place a Stop marker in the yard. |
 | **Destination** | Optional. The stable goal. Never required to create a track. |
-| **Signal** | The track's state, at the entrance. Tap it to mark a track ready. |
-| **Stop** | A historical marker left when you switch or park with a meaningful pickup note. Continuing from it marks it passed without deleting it. |
-| **Note** | A short thought added to any live track without moving the locomotive. Notes can be resolved and remain as quiet history. |
+| **Signal** | A manual cue independent of the locomotive. Tap any signal to cycle neutral → waiting → ready. |
+| **Stop** | The track's one current re-entry marker. A new Stop replaces the old one rather than building a flag archive. |
+| **Note** | A short thought added to any live track without moving the locomotive. Resolving it removes it. |
+| **Branch** | A one-level detour from the active main track. Resolving an active branch returns the locomotive to its parent. |
+| **Timebox** | An optional track timer. It runs only while that track is active and can be paused or cleared. |
 | **Shed** | Where the locomotive sits when your attention is not on any track. Park sends it here. |
 | **Arrivals** | Completed tracks, including start and arrival times, total active time, and full Track history. |
 
-Track status and Stops are separate. States are `active` · `parked` · `waiting` · `ai_working` · `ready` · `arrived`. A Stop is an event marker, not a status.
+Locomotive presence, signal state, and Stops are separate. Track lifecycle states remain `active` · `parked` · `waiting` · `ai_working` · `ready` · `arrived`; the visible signal is independently `neutral` · `waiting` · `ready`. Parked tracks have no status label.
 
-Track order stays fixed where tracks were laid; reorder is intentionally not shipped yet. Edit the active track's name, destination, and current stop inline in the top area. Use Delete in Track Details only for unwanted tracks. Delete offers Undo; Arrived is the normal completion path.
+Drag a main track's tactile handle to reorder it; its branches move with it. Edit the active track's name, destination, and current stop inline in the top area. Any inactive track can be marked Arrived from its row. Use Delete in Track Details only for unwanted tracks. Delete offers Undo; Arrived is the normal completion path.
 
 ---
 
@@ -51,7 +53,7 @@ ext/
     tracks.js                Domain logic. All state transitions live here.
     railway.js               Yard geometry + SVG construction
     anim.js                  Motion engine (native path-follower, or GSAP)
-    motion.js                The four semantic movements
+    motion.js                Semantic train, switch, rail, and shed movements
   sidepanel/
     index.html  panel.css  panel.js
   icons/
@@ -72,10 +74,9 @@ Motion is brief and mechanical:
 |---|---|
 | `switchTracks` | where did my attention go, and where from |
 | `layTrack` | this place is new: it was built, not appended |
-| `markReturn` | something was deliberately left, right there |
 | `resumeTo` | you're back, and this is the spot |
 
-The locomotive wheels and rods move only while it travels. A switch blade throws before the locomotive changes track, a Stop pops up, a Note unfolds, and signals react when their state changes. Rails and sleepers remain still so the yard stays calm.
+The active locomotive idles mechanically and its rail has a very slow shimmer. Wheels and rods move faster only while it travels. A switch blade throws before the locomotive changes track, a Stop pops up, a Note unfolds, and signals react when their state changes. Nothing scrolls continuously across the whole yard.
 
 The blade throws *before* the engine moves. That order is the whole difference between a mechanism responding to a decision and a cartoon train sliding around.
 
@@ -159,4 +160,4 @@ Junction detection is the obvious missing piece and it is missing on purpose. It
 
 Build it when, and only when, the export above says people are actually resuming what they park.
 
-Also not built, per spec §29: branches, countdowns, timeboxing, checklists, task management, calendar, Pomodoro, blocking, scoring, collaboration, agent integrations, automatic decomposition, or an elaborate railway map.
+Still deliberately absent: nested/multi-level branches, checklists, task management, calendar, Pomodoro enforcement, website blocking, productivity scoring, collaboration, agent integrations, automatic decomposition, or an elaborate railway map. Timeboxing is intentionally just an optional track timer.

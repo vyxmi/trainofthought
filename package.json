@@ -1,6 +1,6 @@
 {
   "name": "train-of-thought",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "A Chrome side panel for switching between trains of thought without losing them.",
   "private": true,
   "scripts": {
