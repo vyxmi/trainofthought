@@ -176,7 +176,7 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.p
   }
   if (await page.locator('.now-restore').count()) throw new Error('Removed tab snapshot UI is still visible');
   if ((await page.locator('.now-actions .action-icon').count()) !== 3) throw new Error('Action icons are missing');
-  if ((await page.locator('.now-actions .btn-quiet').count()) !== 3) throw new Error('Top actions do not share the quiet style');
+  if ((await page.locator('.now-actions .btn-quiet').count()) < 3) throw new Error('Top actions do not share the quiet style');
   const statusAlignment = await page.evaluate(() => {
     const group = document.querySelector('.track-label-group[data-id="b"]');
     const status = group.querySelector('.lbl-status');
@@ -192,8 +192,8 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.p
     glint: getComputedStyle(document.querySelector('.row.is-active .railhead')).animationName,
     direction: document.querySelector('.loco-direction').getAttribute('transform'),
   }));
-  if ([idleMotion.loco, idleMotion.rail, idleMotion.wheel, idleMotion.glint].some((name) => name !== 'none')) {
-    throw new Error(`The calm yard still has continuous idle motion: ${JSON.stringify(idleMotion)}`);
+  if ([idleMotion.loco, idleMotion.rail, idleMotion.wheel, idleMotion.glint].some((name) => name === 'none')) {
+    throw new Error(`The active locomotive and track are not moving: ${JSON.stringify(idleMotion)}`);
   }
   if (idleMotion.direction !== 'scale(-1 1)') {
     throw new Error(`The locomotive is not facing left-to-right: ${JSON.stringify(idleMotion)}`);
@@ -240,7 +240,7 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.p
     running: document.querySelector('.rail-svg').classList.contains('is-running'),
     wheel: getComputedStyle(document.querySelector('.loco .wheel')).animationName,
   }));
-  if (!bladeFirst.blade || bladeFirst.running || bladeFirst.wheel !== 'none') {
+  if (!bladeFirst.blade || bladeFirst.running || bladeFirst.wheel.includes('wheel-roll')) {
     throw new Error(`The switch blade did not move before the locomotive: ${JSON.stringify(bladeFirst)}`);
   }
   await page.waitForSelector('.rail-svg.is-running');
@@ -359,24 +359,22 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.p
   const hist = await page.evaluate(async () => (await chrome.storage.local.get('ty')).ty.history);
   console.log('history after double-click arrive:', JSON.stringify(hist), hist.length === 1 ? 'OK' : 'DUPLICATED');
 
-  // Resuming a track must lift its return board rather than leaving it standing.
+  // Stops are one durable current re-entry point, not an accumulating flag archive.
   // The engine is in the shed after the arrival, so there is nothing to park and
   // the label click resumes directly without the switch sheet.
-  await page.click('.track-title[data-id="b"]');
+  await page.click('.track-title[data-id="b"] .lbl-name');
   await page.waitForTimeout(1800);
   const resumed = await page.evaluate(async () => ({
     loco: (await chrome.storage.local.get('ty')).ty.locomotive.trackId,
-    stopPassed: !!(await chrome.storage.local.get('ty')).ty.tracks.b.events.find(
-      (event) => event.type === 'stop'
-    )?.passedAt,
-    bMarkerHidden: document.querySelector('.row[data-id="b"] .marker').classList.contains('is-hidden'),
+    stops: (await chrome.storage.local.get('ty')).ty.tracks.b.events.filter((event) => event.type === 'stop').length,
+    svgFlags: document.querySelectorAll('.marker').length,
   }));
   console.log(
     'after resume:',
     JSON.stringify(resumed),
-    resumed.loco === 'b' && resumed.bMarkerHidden && resumed.stopPassed ? 'OK' : 'BAD'
+    resumed.loco === 'b' && resumed.stops === 1 && resumed.svgFlags === 0 ? 'OK' : 'BAD'
   );
-  if (!resumed.stopPassed) throw new Error('Resumed Stop was not marked as passed');
+  if (resumed.stops !== 1 || resumed.svgFlags !== 0) throw new Error('Stops still behave like accumulating flag markers');
   await shot(page, '15-resumed');
 
   // The shed drawing and its label both expose the same park action. The label
@@ -493,13 +491,13 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.p
   await page.waitForTimeout(200);
   const resolved = await page.evaluate(async () => {
     const events = (await chrome.storage.local.get('ty')).ty.tracks.c.events;
-    return events.findLast((event) => event.type === 'note').resolvedAt;
+    return events.filter((event) => event.type === 'note').map((event) => event.text);
   });
-  if (!resolved || !(await page.locator('.event-marker.marker-note[data-id="c"].is-resolved').count())) {
-    throw new Error('Resolving a Note did not preserve it in a quieter state');
+  if (resolved.includes('Verify mobile width') || (await page.locator('.event-marker.marker-note[data-id="c"]').allTextContents()).join(' ').includes('Verify mobile width')) {
+    throw new Error('Resolving a Note did not remove it');
   }
 
-  if (await page.locator('.drag-handle').count()) throw new Error('The removed drag UI is still visible');
+  if (!(await page.locator('.drag-track').count())) throw new Error('Track reorder handles are missing');
   await page.click('.details-track[data-id="c"]');
   if (await page.locator('.details-heading input').count()) throw new Error('Editing is still buried in Track Details');
   const episodeText = (await page.locator('.episode-track').textContent()).toLowerCase();
@@ -519,6 +517,97 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.p
 }
 
 // 7. Ten active tracks use vertical space rather than squeezing the rails.
+{
+  const { ctx, page } = await openPanel(seeded, { dark: true });
+
+  const geometry = await page.evaluate(() => {
+    const rail = document.querySelector('.row[data-id="a"] .rail').getBoundingClientRect();
+    const title = document.querySelector('.track-label-group[data-id="a"]').getBoundingClientRect();
+    const marker = document.querySelector('.event-marker[data-id="a"]').getBoundingClientRect();
+    const loco = document.querySelector('.loco').getBoundingClientRect();
+    return { railY: rail.top, titleTop: title.top, markerBottom: marker.bottom, locoLeft: loco.left };
+  });
+  if (geometry.titleTop <= geometry.railY || geometry.markerBottom > geometry.railY + 2 || geometry.locoLeft > 62) {
+    throw new Error(`Rail content geometry is wrong: ${JSON.stringify(geometry)}`);
+  }
+  if ((await page.locator('.track-label-group[data-id="c"] .lbl-status').textContent()).trim()) {
+    throw new Error('Parked/AI track still displays a status label');
+  }
+
+  // Every signal cycles neutral → waiting → ready → neutral, including active.
+  for (const id of ['a', 'c']) {
+    const expected = ['aspect-caution', 'aspect-ready', 'aspect-off'];
+    for (const className of expected) {
+      await page.click(`.row[data-id="${id}"] .sig-hit`);
+      await page.waitForTimeout(80);
+      const cls = await page.getAttribute(`.row[data-id="${id}"] .signal`, 'class');
+      if (!cls.includes(className)) throw new Error(`Signal ${id} did not cycle to ${className}: ${cls}`);
+    }
+  }
+
+  // Timeboxes run only on the active track and can be paused without deleting.
+  await page.click('[data-act="timebox"]');
+  await page.fill('#timebox-minutes', '15');
+  await page.click('#timebox-save');
+  await page.waitForTimeout(1100);
+  const timerRunning = await page.evaluate(async () => (await chrome.storage.local.get('ty')).ty.tracks.a.timebox);
+  if (!timerRunning?.runningSince || timerRunning.durationMs !== 900000 || timerRunning.elapsedMs < 0) {
+    throw new Error(`Timebox did not start correctly: ${JSON.stringify(timerRunning)}`);
+  }
+  await page.click('[data-act="timebox-toggle"]');
+  const timerPaused = await page.evaluate(async () => (await chrome.storage.local.get('ty')).ty.tracks.a.timebox);
+  if (timerPaused.runningSince || timerPaused.elapsedMs < 900) throw new Error(`Timebox did not pause: ${JSON.stringify(timerPaused)}`);
+
+  // A branch is laid under its parent; resolving the active branch returns home.
+  await page.click('[data-act="branch"]');
+  await page.fill('#branch-name', 'Check one assumption');
+  await page.fill('#branch-destination', 'Choose an approach');
+  await page.click('#branch-save');
+  await page.waitForTimeout(1700);
+  const branched = await page.evaluate(async () => {
+    const next = (await chrome.storage.local.get('ty')).ty;
+    const branch = Object.values(next.tracks).find((track) => track.parentId === 'a' && track.status !== 'arrived');
+    return { active: next.locomotive.trackId, id: branch?.id, parentId: branch?.parentId, order: next.order };
+  });
+  if (!branched.id || branched.active !== branched.id || branched.parentId !== 'a' || branched.order.indexOf(branched.id) !== branched.order.indexOf('a') + 1) {
+    throw new Error(`Branch creation failed: ${JSON.stringify(branched)}`);
+  }
+  if (!(await page.locator(`.track-label-group[data-id="${branched.id}"].is-branch`).count())) throw new Error('Branch is not visually nested');
+  await shot(page, '18-branch-and-timebox');
+  await page.click('[data-act="resolve-branch"]');
+  await page.waitForTimeout(1800);
+  const resolvedBranch = await page.evaluate(async (id) => {
+    const next = (await chrome.storage.local.get('ty')).ty;
+    return { active: next.locomotive.trackId, status: next.tracks[id].status, inYard: next.order.includes(id) };
+  }, branched.id);
+  if (resolvedBranch.active !== 'a' || resolvedBranch.status !== 'arrived' || resolvedBranch.inYard) {
+    throw new Error(`Resolving a branch did not return to its parent: ${JSON.stringify(resolvedBranch)}`);
+  }
+  await ctx.close();
+}
+
+{
+  const { ctx, page } = await openPanel(seeded);
+  // Inactive tracks can arrive without first stealing the locomotive.
+  await page.click('.arrive-track[data-id="b"]');
+  await page.waitForTimeout(160);
+  const inactiveArrival = await page.evaluate(async () => {
+    const next = (await chrome.storage.local.get('ty')).ty;
+    return { active: next.locomotive.trackId, status: next.tracks.b.status, inYard: next.order.includes('b') };
+  });
+  if (inactiveArrival.active !== 'a' || inactiveArrival.status !== 'arrived' || inactiveArrival.inYard) {
+    throw new Error(`Inactive arrival failed: ${JSON.stringify(inactiveArrival)}`);
+  }
+
+  // Reordering is explicit and persists; there is no recency auto-sort.
+  await page.locator('.drag-track[data-id="d"]').dragTo(page.locator('.track-label-group[data-id="a"]'));
+  await page.waitForTimeout(220);
+  const reordered = await page.evaluate(async () => (await chrome.storage.local.get('ty')).ty.order);
+  if (reordered[0] !== 'd') throw new Error(`Drag reorder did not persist: ${JSON.stringify(reordered)}`);
+  await ctx.close();
+}
+
+// 8. Ten active tracks use vertical space rather than squeezing the rails.
 {
   const fullYard = structuredClone(seeded);
   for (const [id, name] of [
@@ -543,7 +632,7 @@ const shot = (page, name) => page.screenshot({ path: path.join(SHOTS, `${name}.p
   await ctx.close();
 }
 
-// 8. Narrow panel: Chrome lets users drag the side panel quite thin
+// 9. Narrow panel: Chrome lets users drag the side panel quite thin
 {
   const { ctx, page } = await openPanel(seeded);
   await page.setViewportSize({ width: 260, height: 700 });
