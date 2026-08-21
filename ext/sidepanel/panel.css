@@ -293,6 +293,46 @@ textarea.now-stop {
   flex-wrap: wrap;
 }
 
+.timebox-row {
+  min-height: 22px;
+  margin-top: 7px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-mono);
+}
+
+.timebox-clock,
+.timebox-add,
+.timebox-control {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  padding: 2px 0;
+  font: inherit;
+  font-size: 9px;
+  letter-spacing: 0.07em;
+  cursor: pointer;
+}
+
+.timebox-clock strong {
+  color: var(--ink-2);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.timebox-row.is-expired .timebox-clock,
+.timebox-row.is-expired .timebox-clock strong {
+  color: var(--accent);
+}
+
+.timebox-add:hover,
+.timebox-control:hover,
+.timebox-clock:hover {
+  color: var(--ink);
+}
+
 /* --- buttons ------------------------------------------------------------ */
 
 button {
@@ -483,6 +523,54 @@ button {
   transition: background 140ms ease, box-shadow 160ms ease;
 }
 
+.drag-track {
+  width: 15px;
+  flex: 0 0 15px;
+  margin-left: -16px;
+  padding: 2px 1px;
+  opacity: 0;
+  cursor: grab;
+  color: var(--ink-3) !important;
+  line-height: 1;
+  transition: opacity 120ms ease, transform 160ms ease;
+}
+
+.drag-track span {
+  display: block;
+  width: 8px;
+  height: 10px;
+  margin: auto;
+  background: repeating-linear-gradient(to bottom, currentColor 0 1px, transparent 1px 4px);
+}
+
+.track-label-group:hover .drag-track,
+.track-label-group:focus-within .drag-track {
+  opacity: 0.7;
+}
+
+.drag-track:active {
+  cursor: grabbing;
+}
+
+.track-label-group.is-dragging {
+  opacity: 0.36;
+  transform: scale(0.985);
+}
+
+.track-label-group.is-drop-target {
+  box-shadow: 0 -2px 0 var(--accent);
+}
+
+.branch-glyph {
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  flex: 0 0 auto;
+}
+
+.track-label-group.is-branch .lbl-name {
+  font-size: 12.5px;
+}
+
 .track-label-group:hover,
 .track-label-group:focus-within {
   background: color-mix(in srgb, var(--paper-3) 88%, transparent);
@@ -658,6 +746,64 @@ button {
 .row.is-active .sleepers {
   stroke: var(--rail);
   opacity: 0.65;
+}
+
+.branch-connector {
+  fill: none;
+  stroke: var(--rail);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  opacity: 0.62;
+}
+
+/* The active railway is alive, but calm: a tiny reciprocating shimmer rather
+   than continuously scrolling sleepers. Travel animations still take over
+   while the locomotive actually changes tracks. */
+.rail-svg:not(.is-running) .row.is-active .railhead {
+  stroke-dasharray: 18 48;
+  animation: active-rail-breathe 2.8s ease-in-out infinite alternate;
+}
+
+.rail-svg:not(.is-running) .row.is-active .sleepers {
+  animation: active-sleeper-breathe 2.2s ease-in-out infinite alternate;
+}
+
+.rail-svg:not(.is-running) .loco:not(.at-depot) .loco-idle {
+  transform-box: fill-box;
+  transform-origin: center bottom;
+  animation: loco-idle 1.25s ease-in-out infinite alternate;
+}
+
+.rail-svg:not(.is-running) .loco:not(.at-depot) .wheel {
+  stroke-dasharray: 3 2;
+  animation: wheel-idle 1.8s linear infinite;
+}
+
+.rail-svg:not(.is-running) .loco:not(.at-depot) .rod {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: rod-idle 1.25s ease-in-out infinite alternate;
+}
+
+@keyframes active-rail-breathe {
+  from { stroke-dashoffset: 0; opacity: 0.42; }
+  to { stroke-dashoffset: -10; opacity: 0.76; }
+}
+
+@keyframes active-sleeper-breathe {
+  to { opacity: 0.82; }
+}
+
+@keyframes loco-idle {
+  to { transform: translateY(-0.45px) rotate(0.15deg); }
+}
+
+@keyframes wheel-idle {
+  to { stroke-dashoffset: -5; }
+}
+
+@keyframes rod-idle {
+  to { transform: translateX(0.7px) translateY(-0.2px); }
 }
 
 .row.is-hovered .rail,
@@ -925,7 +1071,8 @@ button {
   opacity: 0.15;
 }
 
-/* --- return marker ------------------------------------------------------ */
+/* Legacy SVG return markers are intentionally hidden. Stops and Notes are
+   the only meaningful markers and live in the HTML overlay. */
 
 .marker {
   cursor: pointer;
@@ -1081,28 +1228,23 @@ button {
 .marker-stop .event-icon::before {
   content: '';
   position: absolute;
-  left: 1px;
-  bottom: 0;
-  width: 1px;
-  height: 11px;
-  background: var(--ink-3);
+  left: 2px;
+  top: 0;
+  width: 5px;
+  height: 5px;
+  border: 1px solid var(--ink-3);
+  border-radius: 50%;
 }
 
 .marker-stop .event-icon::after {
   content: '';
   position: absolute;
-  left: 2px;
-  top: 0;
-  width: 7px;
-  height: 5px;
-  border-radius: 1px;
-  background: var(--accent);
-}
-
-/* The raised SVG board is the newest live Stop's physical flag. Its adjacent
-   HTML marker supplies the text and hit target without drawing a second flag. */
-.marker-stop.is-latest:not(.is-passed) .event-icon {
-  display: none;
+  left: 4.5px;
+  top: 6px;
+  width: 1px;
+  height: 6px;
+  border-radius: 0;
+  background: var(--ink-3);
 }
 
 .marker-note .event-icon {
@@ -1122,27 +1264,6 @@ button {
   border-left: 1px solid var(--ink-3);
   border-bottom: 1px solid var(--ink-3);
   background: var(--paper-2);
-}
-
-.event-marker.is-passed,
-.event-marker.is-resolved {
-  opacity: 0.52;
-}
-
-.event-marker.is-passed .event-text {
-  text-decoration: line-through;
-  text-decoration-thickness: 1px;
-}
-
-.event-marker.is-resolved .event-icon {
-  filter: grayscale(1);
-}
-
-.event-marker.is-passed:hover,
-.event-marker.is-passed:focus-visible,
-.event-marker.is-resolved:hover,
-.event-marker.is-resolved:focus-visible {
-  opacity: 0.9;
 }
 
 .marker-stop.is-new {
@@ -1334,6 +1455,36 @@ textarea::placeholder {
   margin-top: 15px;
   padding-top: 14px;
   border-top: 1px dashed var(--edge);
+}
+
+.sheet-copy {
+  margin: -2px 0 12px;
+  color: var(--ink-2);
+  font-family: var(--font-note);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.timebox-presets {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.custom-timebox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.custom-timebox input {
+  width: 74px;
 }
 
 .chips {

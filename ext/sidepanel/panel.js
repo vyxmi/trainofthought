@@ -11,6 +11,7 @@
 
 import {
   STATUS,
+  SIGNAL,
   LEFT,
   LEFT_LABEL,
   EV,
@@ -43,6 +44,8 @@ let editingNowField = null;
 let skipNextAnim = false;
 let toastTimer = 0;
 let newMarkerEventIds = new Set();
+let reorderFlipPositions = null;
+const expiredTimerIds = new Set();
 
 const motion = new Motion(svgEl);
 
@@ -63,20 +66,34 @@ function statusWord(t) {
     case STATUS.WAITING:
       return 'waiting';
     case STATUS.AI:
-      return 'AI working';
+      return '';
     case STATUS.PARKED:
-      return t.leftBecause === LEFT.BLOCKED ? 'stopped' : 'parked';
+      return '';
     default:
       return '';
   }
 }
 
 function stateClass(t) {
-  if (t.status === STATUS.READY) return 'is-ready';
-  if (t.status === STATUS.WAITING) return 'is-waiting';
-  if (t.status === STATUS.AI) return 'is-ai';
-  if (t.status === STATUS.PARKED && t.leftBecause === LEFT.BLOCKED) return 'is-blocked';
+  if (t.signalState === SIGNAL.READY) return 'is-ready';
+  if (t.signalState === SIGNAL.WAITING) return 'is-waiting';
   return '';
+}
+
+function timeboxElapsed(track, now = Date.now()) {
+  const timer = track?.timebox;
+  if (!timer) return 0;
+  return Math.max(0, timer.elapsedMs || 0) + (timer.runningSince ? Math.max(0, now - timer.runningSince) : 0);
+}
+
+function timeboxRemaining(track, now = Date.now()) {
+  return Math.max(0, (track?.timebox?.durationMs || 0) - timeboxElapsed(track, now));
+}
+
+function clock(ms) {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const minutes = Math.floor(total / 60);
+  return `${minutes}:${String(total % 60).padStart(2, '0')}`;
 }
 
 function ago(ms) {
@@ -173,11 +190,11 @@ async function render(next, { animate = true } = {}) {
 
   const ids = next.order.filter((id) => next.tracks[id]);
   const width = yardEl.clientWidth || 340;
-  const key = `${width}|${ids.join(',')}`;
+  const key = `${width}|${ids.map((id) => `${id}:${next.tracks[id]?.parentId || ''}`).join(',')}`;
   const rebuilt = key !== shapeKey;
 
   if (rebuilt) {
-    layout = computeLayout(width, ids);
+    layout = computeLayout(width, ids, next.tracks);
     handles = buildYard(svgEl, layout, next.tracks);
     motion.attach(layout, handles);
     shapeKey = key;
@@ -186,7 +203,11 @@ async function render(next, { animate = true } = {}) {
   syncAspects(handles, layout, next);
   if (before) {
     for (const id of next.order) {
-      if (before.tracks[id]?.status === next.tracks[id]?.status) continue;
+      if (
+        before.tracks[id]?.status === next.tracks[id]?.status &&
+        before.tracks[id]?.signalState === next.tracks[id]?.signalState
+      )
+        continue;
       const signal = handles?.rows.get(id)?.signal;
       if (!signal) continue;
       signal.classList.add('is-changing');
@@ -211,40 +232,39 @@ function renderLabels(s) {
     const t = s.tracks[slot.id];
     if (!t) continue;
     const group = document.createElement('div');
-    group.className = ['track-label-group', t.id === activeId ? 'is-active' : '', stateClass(t)].filter(Boolean).join(' ');
+    group.className = ['track-label-group', slot.isBranch ? 'is-branch' : '', t.id === activeId ? 'is-active' : '', stateClass(t)]
+      .filter(Boolean)
+      .join(' ');
     group.dataset.id = t.id;
     group.style.left = `${Math.max(4, slot.labelX - 18)}px`;
     group.style.top = `${slot.labelY}px`;
     group.style.width = `${Math.max(120, layout.width - slot.labelX - 30)}px`;
     group.innerHTML = `
+      ${!slot.isBranch ? `<button class="drag-track" draggable="true" data-id="${esc(t.id)}" aria-label="Reorder ${esc(t.name)}" title="Drag to reorder"><span aria-hidden="true"></span></button>` : ''}
       <button class="track-title" data-id="${esc(t.id)}" title="${t.id === activeId ? 'Current track' : `Switch to ${esc(t.name)}`}">
+        ${slot.isBranch ? '<span class="branch-glyph" aria-hidden="true">↳</span>' : ''}
         <span class="lbl-name">${esc(t.name)}</span>
         <span class="lbl-status">${esc(statusWord(t))}</span>
       </button>
       <span class="track-tools">
         <button class="add-note" data-id="${esc(t.id)}" title="Add a note">+ note</button>
+        ${t.id !== activeId ? `<button class="arrive-track" data-id="${esc(t.id)}" title="Mark arrived">arrive</button>` : ''}
         <button class="details-track" data-id="${esc(t.id)}" aria-label="Open details for ${esc(t.name)}" title="Track details">•••</button>
       </span>`;
     labelsEl.appendChild(group);
 
-    const markerEvents = (t.events || [])
-      .filter((event) => event.type === 'stop' || event.type === 'note')
-      .slice(-4);
+    const markerEvents = (t.events || []).filter((event) => event.type === 'stop' || event.type === 'note').slice(-4);
     if (markerEvents.length) {
-      const newestRelevant = [...markerEvents]
-        .reverse()
-        .find((event) => (event.type === 'stop' ? !event.passedAt : !event.resolvedAt));
-      const newestId = (newestRelevant || markerEvents.at(-1)).id;
+      const newestId = markerEvents.at(-1).id;
       const markers = document.createElement('div');
       markers.className = 'event-markers';
       markers.style.left = `${slot.platformX + 18}px`;
-      markers.style.top = `${slot.y + 5}px`;
+      markers.style.top = `${slot.y - 31}px`;
       markers.style.width = `${Math.max(70, layout.width - slot.platformX - 46)}px`;
       markers.innerHTML = markerEvents
         .map(
           (event) => `
           <button class="event-marker marker-${event.type} ${event.id === newestId ? 'is-latest' : 'is-compact'}
-                  ${event.passedAt ? 'is-passed' : ''} ${event.resolvedAt ? 'is-resolved' : ''}
                   ${newMarkerEventIds.has(event.id) ? 'is-new' : ''}"
                   data-id="${esc(t.id)}" data-event-id="${esc(event.id)}"
                   aria-label="Inspect ${event.type}: ${esc(event.text || '')}">
@@ -256,6 +276,27 @@ function renderLabels(s) {
         .join('');
       labelsEl.appendChild(markers);
     }
+  }
+
+  if (reorderFlipPositions) {
+    const previous = reorderFlipPositions;
+    reorderFlipPositions = null;
+    requestAnimationFrame(() => {
+      labelsEl.querySelectorAll('.track-label-group').forEach((group) => {
+        const oldTop = previous.get(group.dataset.id);
+        if (oldTop == null) return;
+        const delta = oldTop - group.getBoundingClientRect().top;
+        if (Math.abs(delta) < 1) return;
+        group.animate([{ transform: `translateY(${delta}px)` }, { transform: 'translateY(0)' }], {
+          duration: 260,
+          easing: 'cubic-bezier(.16,.84,.32,1)',
+        });
+        handles?.rows.get(group.dataset.id)?.g.animate(
+          [{ transform: `translateY(${delta}px)` }, { transform: 'translateY(0)' }],
+          { duration: 260, easing: 'cubic-bezier(.16,.84,.32,1)' }
+        );
+      });
+    });
   }
 
   const d = document.createElement('button');
@@ -322,6 +363,10 @@ function renderNow(s) {
   }
 
   const hasStop = !!cur.currentStop;
+  const timer = cur.timebox;
+  const remaining = timer ? timeboxRemaining(cur) : 0;
+  const timerExpired = !!timer && remaining <= 0;
+  const branch = !!cur.parentId;
 
   nowEl.innerHTML = `
     <div class="eyebrow now-current"><span>current stop</span><i class="eyebrow-line"></i>
@@ -333,10 +378,20 @@ function renderNow(s) {
     <button class="now-stop ${hasStop ? '' : 'is-empty'}" id="stop-btn" title="Click to edit">${
       hasStop ? esc(cur.currentStop) : 'What are you doing right now?'
     }</button>
+    <div class="timebox-row ${timerExpired ? 'is-expired' : ''}">
+      ${
+        timer
+          ? `<button class="timebox-clock" data-act="timebox" title="Edit timebox">timer · <strong data-timebox-clock>${esc(clock(remaining))}</strong></button>
+             <button class="timebox-control" data-act="timebox-toggle">${timer.runningSince && !timerExpired ? 'pause' : timerExpired ? 'finished' : 'resume'}</button>
+             <button class="timebox-control" data-act="timebox-clear">clear</button>`
+          : `<button class="timebox-add" data-act="timebox">+ timebox this track</button>`
+      }
+    </div>
     <div class="now-actions">
       <button class="btn btn-quiet action-button" data-act="switch">${actionLabel('switch', 'switch tracks')}</button>
       <button class="btn btn-quiet action-button" data-act="park">${actionLabel('park', 'park')}</button>
-      <button class="btn btn-quiet action-button" data-act="arrived">${actionLabel('arrived', 'arrived')}</button>
+      <button class="btn btn-quiet action-button" data-act="${branch ? 'resolve-branch' : 'arrived'}">${actionLabel('arrived', branch ? 'resolve branch' : 'arrived')}</button>
+      ${!branch ? '<button class="btn btn-quiet" data-act="branch">+ branch</button>' : ''}
     </div>`;
   wireNow();
 }
@@ -348,6 +403,11 @@ function wireNow() {
       if (act === 'switch') openSwitchSheet('switch');
       if (act === 'park') openSwitchSheet('park');
       if (act === 'arrived') doArrive();
+      if (act === 'resolve-branch') doResolveBranch(T.activeTrack(state)?.id);
+      if (act === 'branch') openBranchSheet(T.activeTrack(state)?.id);
+      if (act === 'timebox') openTimeboxSheet(T.activeTrack(state)?.id);
+      if (act === 'timebox-toggle') T.toggleTimebox(T.activeTrack(state)?.id);
+      if (act === 'timebox-clear') T.clearTimebox(T.activeTrack(state)?.id);
       if (act === 'new') openSwitchSheet('switch', { jumpToNew: true });
     };
   });
@@ -675,6 +735,80 @@ function openNewTrackSheet(leave = null) {
   );
 }
 
+function openTimeboxSheet(id) {
+  const track = state.tracks[id];
+  if (!track) return;
+  const currentMinutes = track.timebox ? Math.round(track.timebox.durationMs / 60_000) : 25;
+  openSheet(
+    `
+    <div class="sheet-step">
+      <h3>Timebox <strong class="track-inline">${esc(track.name)}</strong></h3>
+      <p class="sheet-copy">A quiet timer, not a deadline. It runs only while your locomotive is on this track.</p>
+      <div class="timebox-presets">
+        ${[15, 25, 45, 60].map((minutes) => `<button class="chip ${minutes === currentMinutes ? 'is-on' : ''}" data-minutes="${minutes}">${minutes}m</button>`).join('')}
+      </div>
+      <label class="custom-timebox">minutes <input id="timebox-minutes" type="number" min="1" max="240" value="${esc(currentMinutes)}"></label>
+    </div>
+    <div class="sheet-actions">
+      <button class="btn btn-quiet" data-close>cancel</button>
+      <span class="spacer"></span>
+      <button class="btn btn-primary" id="timebox-save">start timer</button>
+    </div>`,
+    () => {
+      const input = $('timebox-minutes');
+      sheetEl.querySelectorAll('[data-minutes]').forEach((button) => {
+        button.onclick = () => {
+          input.value = button.dataset.minutes;
+          sheetEl.querySelectorAll('[data-minutes]').forEach((candidate) => candidate.classList.toggle('is-on', candidate === button));
+        };
+      });
+      $('timebox-save').onclick = async () => {
+        const minutes = Math.min(240, Math.max(1, Number(input.value) || 25));
+        closeSheet();
+        expiredTimerIds.delete(id);
+        await T.setTimebox(id, minutes);
+      };
+      input.onkeydown = (event) => {
+        if (event.key === 'Enter') $('timebox-save').click();
+      };
+    }
+  );
+}
+
+function openBranchSheet(parentId) {
+  const parent = state.tracks[parentId];
+  if (!parent || parent.parentId || parent.status === STATUS.ARRIVED) return;
+  openSheet(
+    `
+    <div class="sheet-step">
+      <h3>Branch from <strong class="track-inline">${esc(parent.name)}</strong></h3>
+      <p class="sheet-copy">A focused detour. Resolving it returns the locomotive to the main track.</p>
+      <input type="text" id="branch-name" maxlength="80" placeholder="Research one open question" autocomplete="off" />
+    </div>
+    <div class="sheet-step">
+      <h3>Destination <span class="optional">(optional)</span></h3>
+      <input type="text" id="branch-destination" maxlength="120" placeholder="Know which approach to use" autocomplete="off" />
+    </div>
+    <div class="sheet-actions">
+      <button class="btn btn-quiet" data-close>cancel</button>
+      <span class="spacer"></span>
+      <button class="btn btn-primary" id="branch-save">lay branch</button>
+    </div>`,
+    () => {
+      const name = $('branch-name');
+      const destination = $('branch-destination');
+      const save = async () => {
+        if (!name.value.trim()) return name.focus();
+        closeSheet();
+        await T.createBranch(parentId, { name: name.value, destination: destination.value });
+      };
+      $('branch-save').onclick = save;
+      [name, destination].forEach((input) => (input.onkeydown = (event) => event.key === 'Enter' && save()));
+      name.focus();
+    }
+  );
+}
+
 function timelineEpisodes(track) {
   const episodes = [];
   let awayAt = null;
@@ -703,10 +837,10 @@ function timelineEpisodes(track) {
         break;
       case 'stop':
         awayAt ||= event.at;
-        push(event, `stopped: “${event.text || 'no note'}”${event.passedAt ? ' · passed' : ''}`, 'stop', true);
+        push(event, `current stop: “${event.text || 'no note'}”`, 'stop', true);
         break;
       case 'note':
-        push(event, `note: “${event.text || ''}”${event.resolvedAt ? ' · resolved' : ''}`, 'note', true);
+        push(event, `note: “${event.text || ''}”`, 'note', true);
         break;
       case 'resume':
         if (awayAt && event.at > awayAt) {
@@ -723,6 +857,15 @@ function timelineEpisodes(track) {
         break;
       case 'reopened':
         push(event, 'returned to the yard', 'resume');
+        break;
+      case 'branch_resolved':
+        push(event, `branch resolved · returned to ${event.parentName || 'main track'}`, 'arrived');
+        break;
+      case 'branch_created':
+        push(event, `branched from ${event.parentName || 'main track'}`, 'origin');
+        break;
+      case 'branch_returned':
+        push(event, `returned from ${event.branchName || 'branch'}`, 'resume');
         break;
       default:
         break;
@@ -765,6 +908,7 @@ function openTrackDetails(id, { focusEventId = null } = {}) {
     </div>
     <div class="sheet-actions details-actions">
       <button class="btn btn-danger" id="details-delete">delete track</button>
+      ${!arrived ? `<button class="btn" id="details-arrive">${track.parentId ? 'resolve branch' : 'mark arrived'}</button>` : ''}
       <span class="spacer"></span>
       <button class="btn" data-close>done</button>
     </div>`,
@@ -773,6 +917,8 @@ function openTrackDetails(id, { focusEventId = null } = {}) {
         button.onclick = () => openMarkerSheet(id, button.dataset.markerId);
       });
       $('details-delete').onclick = () => deleteTrackWithUndo(id);
+      const arriveButton = $('details-arrive');
+      if (arriveButton) arriveButton.onclick = () => (track.parentId ? doResolveBranch(id) : doArriveTrack(id));
       if (focusEventId) {
         requestAnimationFrame(() => {
           const target = document.getElementById(`episode-${focusEventId}`);
@@ -791,7 +937,7 @@ function openMarkerSheet(id, eventId) {
   );
   if (!track || !event) return;
   const isNote = event.type === 'note';
-  const stateLabel = event.passedAt ? 'passed' : event.resolvedAt ? 'resolved' : 'current';
+  const stateLabel = event.type === 'stop' ? 'current stop' : 'note';
   openSheet(
     `
     <div class="details-heading marker-heading">
@@ -802,7 +948,7 @@ function openMarkerSheet(id, eventId) {
     <div class="marker-inspect-meta"><time>${esc(dateTime(event.at))}</time><span>${esc(stateLabel)}</span></div>
     <div class="sheet-actions marker-actions">
       <button class="btn btn-quiet" id="marker-details">track details</button>
-      ${isNote ? `<button class="btn" id="marker-resolve">${event.resolvedAt ? 'reopen note' : 'resolve note'}</button>` : ''}
+      ${isNote ? '<button class="btn" id="marker-resolve">resolve note</button>' : ''}
       <span class="spacer"></span>
       ${track.status !== STATUS.ARRIVED ? `<button class="btn btn-primary" id="marker-continue">continue from here</button>` : ''}
     </div>`,
@@ -811,10 +957,9 @@ function openMarkerSheet(id, eventId) {
       const resolve = $('marker-resolve');
       if (resolve) {
         resolve.onclick = async () => {
-          const willResolve = !event.resolvedAt;
-          await T.setNoteResolved(id, eventId, willResolve);
+          await T.setNoteResolved(id, eventId, true);
           closeSheet();
-          toast(willResolve ? 'Note resolved.' : 'Note reopened.');
+          toast('Note resolved and removed.');
         };
       }
       const continueButton = $('marker-continue');
@@ -908,6 +1053,12 @@ function openArrivals() {
 async function deleteTrackWithUndo(id) {
   const track = state.tracks[id];
   if (!track) return;
+  const liveBranches = state.order.filter((trackId) => state.tracks[trackId]?.parentId === id);
+  if (liveBranches.length) {
+    closeSheet();
+    toast(`Resolve ${liveBranches.length === 1 ? 'the branch' : 'the branches'} before deleting this track.`);
+    return;
+  }
   const saved = structuredClone(track);
   const orderIndex = state.order.indexOf(id);
   const historyIndex = state.history.indexOf(id);
@@ -1032,6 +1183,8 @@ let arriving = false;
 async function doArrive() {
   const cur = T.activeTrack(state);
   if (!cur || arriving) return;
+  const liveBranches = state.order.filter((id) => state.tracks[id]?.parentId === cur.id);
+  if (liveBranches.length) return toast(`Resolve ${liveBranches.length === 1 ? 'the branch' : 'the branches'} first.`);
   // The button stays on screen for the whole ~1s departure, so guard the entry
   // point as well as the reducer.
   arriving = true;
@@ -1048,12 +1201,39 @@ async function doArrive() {
   }
 }
 
-/** Tapping a signal is how you say "this is ready now". */
+async function doArriveTrack(id) {
+  const track = state.tracks[id];
+  if (!track || track.status === STATUS.ARRIVED || arriving) return;
+  if (track.parentId) return doResolveBranch(id);
+  const liveBranches = state.order.filter((trackId) => state.tracks[trackId]?.parentId === id);
+  if (liveBranches.length) return toast(`Resolve ${liveBranches.length === 1 ? 'the branch' : 'the branches'} first.`);
+  if (state.locomotive?.trackId === id) return doArrive();
+  closeSheet();
+  await T.arrive(id);
+  toast(`${track.name} arrived.`, 'undo', () => T.unarrive(id));
+}
+
+async function doResolveBranch(id) {
+  const branch = state.tracks[id];
+  if (!branch?.parentId || arriving) return;
+  arriving = true;
+  closeSheet();
+  try {
+    if (state.locomotive?.trackId === id) {
+      skipNextAnim = true;
+      await motion.switchTracks(id, branch.parentId, { leaveMarker: false });
+    }
+    await T.resolveBranch(id);
+    toast(`${branch.name} resolved.`);
+  } finally {
+    arriving = false;
+  }
+}
+
 async function onSignal(id) {
   const t = state.tracks[id];
-  if (!t || t.status === STATUS.ACTIVE) return;
-  if (t.status === STATUS.READY) await T.unmarkReady(id);
-  else await T.markReady(id);
+  if (!t || t.status === STATUS.ARRIVED) return;
+  await T.cycleSignal(id);
 }
 
 function onPickTrack(id) {
@@ -1099,12 +1279,56 @@ labelsEl.addEventListener('click', (e) => {
   if (event) return openMarkerSheet(event.dataset.id, event.dataset.eventId);
   const note = e.target.closest?.('.add-note');
   if (note) return openNoteSheet(note.dataset.id);
+  const arrive = e.target.closest?.('.arrive-track');
+  if (arrive) return doArriveTrack(arrive.dataset.id);
   const details = e.target.closest?.('.details-track');
   if (details) return openTrackDetails(details.dataset.id);
   const title = e.target.closest?.('.track-title');
   if (title) return onPickTrack(title.dataset.id);
   const depot = e.target.closest?.('[data-action="depot"]');
   if (depot && T.activeTrack(state)) openSwitchSheet('park');
+});
+
+let draggingTrackId = null;
+
+labelsEl.addEventListener('dragstart', (event) => {
+  const handle = event.target.closest?.('.drag-track');
+  if (!handle) return;
+  draggingTrackId = handle.dataset.id;
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData('text/plain', draggingTrackId);
+  requestAnimationFrame(() => labelsEl.querySelector(`.track-label-group[data-id="${CSS.escape(draggingTrackId)}"]`)?.classList.add('is-dragging'));
+});
+
+labelsEl.addEventListener('dragover', (event) => {
+  if (!draggingTrackId) return;
+  const target = event.target.closest?.('.track-label-group:not(.is-branch)');
+  if (!target || target.dataset.id === draggingTrackId) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'move';
+  labelsEl.querySelectorAll('.is-drop-target').forEach((node) => node.classList.remove('is-drop-target'));
+  target.classList.add('is-drop-target');
+});
+
+labelsEl.addEventListener('drop', async (event) => {
+  if (!draggingTrackId) return;
+  const target = event.target.closest?.('.track-label-group:not(.is-branch)');
+  if (!target || target.dataset.id === draggingTrackId) return;
+  event.preventDefault();
+  const roots = state.order.filter((id) => !state.tracks[id]?.parentId);
+  const from = roots.indexOf(draggingTrackId);
+  const to = roots.indexOf(target.dataset.id);
+  if (from < 0 || to < 0) return;
+  reorderFlipPositions = new Map(
+    [...labelsEl.querySelectorAll('.track-label-group')].map((group) => [group.dataset.id, group.getBoundingClientRect().top])
+  );
+  roots.splice(to, 0, roots.splice(from, 1)[0]);
+  await T.reorder(roots);
+});
+
+labelsEl.addEventListener('dragend', () => {
+  draggingTrackId = null;
+  labelsEl.querySelectorAll('.is-dragging,.is-drop-target').forEach((node) => node.classList.remove('is-dragging', 'is-drop-target'));
 });
 
 labelsEl.addEventListener('pointerover', (e) => {
@@ -1138,10 +1362,19 @@ window.addEventListener('resize', () => {
 setInterval(() => {
   const cur = state && T.activeTrack(state);
   if (!cur) return;
-  if (!editingNowField) renderNow(state);
+  const activeClock = document.querySelector('[data-timebox-clock]');
+  if (activeClock && cur.timebox) {
+    const remaining = timeboxRemaining(cur);
+    activeClock.textContent = clock(remaining);
+    if (remaining <= 0 && !expiredTimerIds.has(cur.id)) {
+      expiredTimerIds.add(cur.id);
+      toast(`Timebox finished on ${cur.name}.`);
+      renderNow(state);
+    }
+  }
   const status = labelsEl.querySelector(`.track-label-group[data-id="${CSS.escape(cur.id)}"] .lbl-status`);
   if (status) status.textContent = statusWord(cur);
-}, 30_000);
+}, 1_000);
 
 // ---------------------------------------------------------------------------
 // Boot
