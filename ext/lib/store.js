@@ -13,7 +13,7 @@
  *   ty_events — local analytics ring buffer (append-only, capped, never leaves disk)
  */
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export const K_STATE = 'ty';
 export const K_OBS = 'ty_obs';
@@ -29,6 +29,12 @@ export const STATUS = {
   AI: 'ai_working',
   READY: 'ready',
   ARRIVED: 'arrived',
+};
+
+export const SIGNAL = {
+  IDLE: 'idle',
+  WAITING: 'waiting',
+  READY: 'ready',
 };
 
 /**
@@ -91,7 +97,7 @@ export function defaultState() {
   };
 }
 
-export function newTrack({ name, destination = '' }) {
+export function newTrack({ name, destination = '', parentId = null }) {
   const t = Date.now();
   const id = uid();
   return {
@@ -102,6 +108,12 @@ export function newTrack({ name, destination = '' }) {
     /** The moving cursor AND the re-entry cue. There is no separate returnPoint —
      *  where you are is where you'll pick up. One field, one truth. */
     currentStop: '',
+    /** Manual signal state is separate from the locomotive's presence. */
+    signalState: SIGNAL.IDLE,
+    /** One-level branch relationship. Null means a main track. */
+    parentId: parentId || null,
+    /** Optional countdown that only runs while this track is active. */
+    timebox: null,
     status: STATUS.PARKED,
     leftBecause: null,
     createdAt: t,
@@ -221,6 +233,25 @@ function migrate(s) {
       }
     }
     s.schemaVersion = 4;
+  }
+  // v4 → v5: simplify the yard to one current Stop, disposable resolved
+  // Notes, three-state manual signals, optional timeboxes, and one-level
+  // branches. Switch/ride events remain for meaningful history.
+  if (s.schemaVersion < 5) {
+    for (const t of Object.values(s.tracks || {})) {
+      const events = t.events || [];
+      const latestStop = [...events].reverse().find((event) => event.type === 'stop');
+      t.events = events.filter(
+        (event) => (event.type !== 'stop' || event === latestStop) && !(event.type === 'note' && event.resolvedAt)
+      );
+      if (latestStop) delete latestStop.passedAt;
+      t.signalState =
+        t.signalState || (t.status === STATUS.READY ? SIGNAL.READY : t.status === STATUS.WAITING ? SIGNAL.WAITING : SIGNAL.IDLE);
+      t.parentId = t.parentId || null;
+      if (t.timebox) t.timebox.paused = !!t.timebox.paused;
+      else t.timebox = null;
+    }
+    s.schemaVersion = 5;
   }
   // Fill any gaps introduced by partial writes.
   return { ...defaultState(), ...s, settings: { ...defaultState().settings, ...(s.settings || {}) } };

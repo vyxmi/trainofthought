@@ -13,7 +13,7 @@
  * transform math.
  */
 
-import { STATUS, LEFT } from './store.js';
+import { SIGNAL } from './store.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 
@@ -31,13 +31,13 @@ export const GEO = {
   // hooks; the near-vertical ladder run it was trying to hide is dealt with by
   // clamping the engine's lean instead (see anim.js maxRotate).
   TURNOUT_R: 14,
-  PLATFORM_DX: 58, // keep the active point near the throat so history starts early
+  PLATFORM_DX: 42, // locomotive stays near the throat, leaving room for markers
   SIGNAL_INSET: 22, // signals align in a column on the right edge
   // Labels clear the ladder entirely. The left gutter belongs to the railway —
   // it is the one column the locomotive travels through, and text in it gets run
   // over. This is why the yard has a spine.
   LABEL_DX: 28,
-  LABEL_TOP: -56, // label block sits above its rail, which underlines it
+  LABEL_TOP: 12, // titles sit directly below their rail
 };
 
 /**
@@ -46,7 +46,7 @@ export const GEO = {
  * @returns layout with a `slots` array; slot index === row index, and the final
  *          slot is always the depot, so switch paths need no special-casing.
  */
-export function computeLayout(width, trackIds) {
+export function computeLayout(width, trackIds, tracks = {}) {
   const W = Math.max(240, Math.round(width));
   const n = trackIds.length;
   const slots = [];
@@ -54,17 +54,23 @@ export function computeLayout(width, trackIds) {
   for (let i = 0; i < n; i++) {
     const y = GEO.ROW_TOP + i * GEO.ROW_H;
     const lx = GEO.LADDER_X0 + i * GEO.LADDER_SLOPE;
+    const track = tracks[trackIds[i]];
+    const isBranch = !!track?.parentId;
+    const railStartX = lx + (isBranch ? 24 : 0);
     slots.push({
       kind: 'track',
       id: trackIds[i],
       index: i,
       y,
       lx,
-      platformX: lx + GEO.PLATFORM_DX,
+      railStartX,
+      platformX: railStartX + GEO.PLATFORM_DX,
       signalX: W - GEO.SIGNAL_INSET,
       railEndX: W - GEO.PAD_R,
-      labelX: lx + GEO.LABEL_DX,
+      labelX: railStartX + GEO.LABEL_DX,
       labelY: y + GEO.LABEL_TOP,
+      parentId: track?.parentId || null,
+      isBranch,
     });
   }
 
@@ -101,7 +107,7 @@ export function computeLayout(width, trackIds) {
 // ---------------------------------------------------------------------------
 
 export function railPath(slot) {
-  return `M ${slot.lx},${slot.y} L ${slot.railEndX},${slot.y}`;
+  return `M ${slot.railStartX ?? slot.lx},${slot.y} L ${slot.railEndX},${slot.y}`;
 }
 
 /** The two halves of a turnout, drawn only where the ladder actually continues. */
@@ -157,25 +163,13 @@ export function switchPath(layout, fromIndex, toIndex, fromX, toX) {
 // Signal aspects
 // ---------------------------------------------------------------------------
 
-/** Status → signal aspect. Six statuses, five aspects: parked-because-blocked
- *  gets a distinct red, because "I stopped here for a reason" reads differently
- *  from "I stepped away", and that difference is the whole value of the marker. */
+/** Manual signal state → lamp aspect. Locomotive presence is deliberately
+ * independent: even the active track can be marked waiting or ready. */
 export function aspectFor(track) {
   if (!track) return 'off';
-  switch (track.status) {
-    case STATUS.ACTIVE:
-      return 'clear';
-    case STATUS.READY:
-      return 'ready';
-    case STATUS.WAITING:
-      return 'caution';
-    case STATUS.AI:
-      return 'auto';
-    case STATUS.PARKED:
-      return track.leftBecause === LEFT.BLOCKED ? 'danger' : 'off';
-    default:
-      return 'off';
-  }
+  if (track.signalState === SIGNAL.READY) return 'ready';
+  if (track.signalState === SIGNAL.WAITING) return 'caution';
+  return 'off';
 }
 
 // ---------------------------------------------------------------------------
@@ -248,31 +242,6 @@ export function signal(track) {
   return g;
 }
 
-/**
- * The return marker: a permanent-way board left standing where the locomotive
- * was when you left. It appears only on tracks the locomotive is *not* on —
- * on the active track the engine itself is the marker.
- */
-export function returnMarker(track) {
-  const stopEvent = [...(track.events || [])].reverse().find((event) => event.type === 'stop' && !event.passedAt);
-  const g = el('g', {
-    class: 'marker',
-    'data-id': track.id,
-    'data-action': 'event',
-    'data-event-id': stopEvent?.id || '',
-    'aria-label': `Open the latest stop on ${track.name}`,
-    role: 'button',
-    tabindex: '0',
-  });
-  // A board, not a disc. A disc at this size is indistinguishable from a wheel,
-  // which made the yard look like it had engines parked on every track.
-  g.appendChild(el('path', { class: 'mk-post', d: 'M 0,0 L 0,-16' }));
-  g.appendChild(el('rect', { class: 'mk-plate', x: 0.5, y: -17.5, width: 9.5, height: 7, rx: 1.2 }));
-  g.appendChild(el('path', { class: 'mk-dot', d: 'M 3,-14.8 H 7.5' }));
-  g.appendChild(el('rect', { class: 'mk-hit', x: -7, y: -21, width: 20, height: 24, fill: 'transparent' }));
-  return g;
-}
-
 /** The engine shed. Where the locomotive sits when your attention isn't anywhere. */
 export function depotShed(slot) {
   const g = el('g', {
@@ -330,6 +299,19 @@ export function buildYard(svg, layout, tracks) {
     g.appendChild(el('path', { class: 'rail', d }));
     g.appendChild(el('path', { class: 'railhead', d }));
 
+    if (slot.parentId) {
+      const parentSlot = layout.byId.get(slot.parentId);
+      if (parentSlot) {
+        const joinX = parentSlot.platformX + 18;
+        g.appendChild(
+          el('path', {
+            class: 'branch-connector',
+            d: `M ${joinX},${parentSlot.y} C ${joinX + 8},${parentSlot.y + 18} ${slot.railStartX - 12},${slot.y - 18} ${slot.railStartX},${slot.y}`,
+          })
+        );
+      }
+    }
+
     for (const t of turnoutPaths(layout, slot)) {
       g.appendChild(el('path', { class: `turnout turnout-${t.dir}`, d: t.d }));
     }
@@ -340,16 +322,12 @@ export function buildYard(svg, layout, tracks) {
     blade.appendChild(el('path', { class: 'blade-arm', d: 'M 0,0 L 13,0' }));
     g.appendChild(blade);
 
-    const marker = returnMarker(track);
-    marker.setAttribute('transform', `translate(${slot.platformX},${slot.y})`);
-    g.appendChild(marker);
-
     const sig = signal(track);
     sig.setAttribute('transform', `translate(${slot.signalX},${slot.y})`);
     g.appendChild(sig);
 
     gRows.appendChild(g);
-    rows.set(track.id, { g, slot, blade, marker, signal: sig, rail: g.querySelector('.rail') });
+    rows.set(track.id, { g, slot, blade, marker: null, signal: sig, rail: g.querySelector('.rail') });
   }
 
   const depot = depotShed(layout.depot);
@@ -357,7 +335,7 @@ export function buildYard(svg, layout, tracks) {
   return { guides, rows, ladder: gLadder, rowsLayer: gRows, depot };
 }
 
-/** Update signal aspects and marker visibility without touching structure. */
+/** Update signal aspects and active-row emphasis without touching structure. */
 export function syncAspects(handles, layout, state) {
   const activeId = state.locomotive?.trackId || null;
   for (const [id, row] of handles.rows) {
@@ -370,17 +348,5 @@ export function syncAspects(handles, layout, state) {
 
     const isActive = id === activeId;
     row.g.classList.toggle('is-active', isActive);
-    // Marker shows only where the engine isn't, and only once you've actually
-    // left something behind there.
-    const stopEvent = [...(track.events || [])].reverse().find((event) => event.type === 'stop' && !event.passedAt);
-    const showMarker = !isActive && !!track.leftAt && !!stopEvent;
-    row.marker.dataset.eventId = stopEvent?.id || '';
-    if (showMarker) row.marker.setAttribute('aria-label', `Open the latest stop on ${track.name}`);
-    else row.marker.removeAttribute('aria-label');
-    row.marker.setAttribute('role', showMarker ? 'button' : 'presentation');
-    row.marker.classList.toggle('is-hidden', !showMarker);
-    row.marker.setAttribute('aria-hidden', String(!showMarker));
-    row.marker.setAttribute('tabindex', showMarker ? '0' : '-1');
-    row.marker.style.pointerEvents = showMarker ? '' : 'none';
   }
 }

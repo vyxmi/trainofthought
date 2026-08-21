@@ -12,7 +12,7 @@
  *   3. ARRIVED tracks leave `order` and enter `history`. They stop being work.
  */
 
-import { STATUS, LEFT, EV, logEvent, newTrack, uid, update } from './store.js';
+import { STATUS, SIGNAL, LEFT, EV, logEvent, newTrack, uid, update } from './store.js';
 
 const TRACK_EVENT_CAP = 500;
 
@@ -56,7 +56,14 @@ function settleTime(state, endedAt = Date.now()) {
   const durationMs = Math.max(0, endedAt - since);
   cur.msOnTrack += durationMs;
   addTrackEvent(cur, 'ride', { startedAt: since, endedAt, durationMs }, endedAt);
+  settleTimebox(cur, endedAt);
   return { startedAt: since, endedAt, durationMs };
+}
+
+function settleTimebox(track, at = Date.now()) {
+  if (!track?.timebox?.runningSince) return;
+  track.timebox.elapsedMs = Math.max(0, track.timebox.elapsedMs || 0) + Math.max(0, at - track.timebox.runningSince);
+  track.timebox.runningSince = null;
 }
 
 function statusFromReason(reason) {
@@ -82,13 +89,17 @@ function statusFromReason(reason) {
  * almost always what you want, since you create a track because you're about to
  * work on it.
  */
-export async function createTrack({ name, destination = '', board = true, leave = null }) {
+export async function createTrack({ name, destination = '', board = true, leave = null, parentId = null }) {
   return update(async (state) => {
     if (state.order.length >= 10) return;
-    const t = newTrack({ name, destination });
+    const t = newTrack({ name, destination, parentId });
     state.tracks[t.id] = t;
     // Append, so laying a new track never moves an existing one.
-    state.order.push(t.id);
+    if (parentId && state.order.includes(parentId)) {
+      let index = state.order.indexOf(parentId) + 1;
+      while (index < state.order.length && state.tracks[state.order[index]]?.parentId === parentId) index += 1;
+      state.order.splice(index, 0, t.id);
+    } else state.order.push(t.id);
 
     await logEvent(EV.TRACK_CREATED, {
       id: t.id,
@@ -101,7 +112,9 @@ export async function createTrack({ name, destination = '', board = true, leave 
       // Creating a track you're about to work on is still leaving the one you're
       // on. The old track must be parked properly or the promise breaks.
       await leave_(state, {
-        stopText: leave?.stopText || '',
+        stopText:
+          leave?.stopText ??
+          (parentId && state.locomotive?.trackId === parentId ? state.tracks[parentId]?.currentStop || '' : ''),
         reason: leave?.reason || LEFT.SWITCHING,
         stopPrefilled: !!leave?.stopPrefilled,
         toId: t.id,
@@ -200,7 +213,10 @@ async function leave_(state, { stopText, reason, stopPrefilled, toId = null }) {
     },
     at
   );
-  if (text) addTrackEvent(cur, 'stop', { text, reason, passedAt: null }, at);
+  // A Stop is the current re-entry point, not an archive. Departures remain in
+  // history, but a new Stop replaces the previous one.
+  cur.events = (cur.events || []).filter((event) => event.type !== 'stop');
+  if (text) addTrackEvent(cur, 'stop', { text, reason }, at);
   if (previousStatus !== nextStatus) addTrackEvent(cur, 'status', { from: previousStatus, to: nextStatus }, at);
 
   await logEvent(EV.TRACK_PARKED, {
@@ -228,7 +244,7 @@ async function board_(state, id, { stopText = '', isNew = false, resumeEventId =
   const timelinePoint = resumeEventId
     ? (t.events || []).find((event) => event.id === resumeEventId && (event.type === 'stop' || event.type === 'note'))
     : wasVisited
-      ? [...(t.events || [])].reverse().find((event) => event.type === 'stop' && !event.passedAt)
+      ? [...(t.events || [])].reverse().find((event) => event.type === 'stop')
       : null;
 
   t.status = STATUS.ACTIVE;
@@ -237,7 +253,7 @@ async function board_(state, id, { stopText = '', isNew = false, resumeEventId =
   t.readyAt = null;
   if (timelinePoint?.text) t.currentStop = String(timelinePoint.text).trim();
   else if (stopText) t.currentStop = String(stopText).trim();
-  if (timelinePoint?.type === 'stop' && !timelinePoint.passedAt) timelinePoint.passedAt = at;
+  if (t.timebox && !t.timebox.paused && (t.timebox.elapsedMs || 0) < t.timebox.durationMs) t.timebox.runningSince = at;
   touch(t);
 
   state.locomotive = { trackId: id, sinceAt: at };
@@ -283,6 +299,24 @@ export async function markReady(id) {
   });
 }
 
+/** Cycle every signal through neutral → waiting → ready, independent of which
+ * track currently carries the locomotive. */
+export async function cycleSignal(id) {
+  return update(async (state) => {
+    const t = state.tracks[id];
+    if (!t || t.status === STATUS.ARRIVED) return;
+    const current = t.signalState || SIGNAL.IDLE;
+    const next = current === SIGNAL.IDLE ? SIGNAL.WAITING : current === SIGNAL.WAITING ? SIGNAL.READY : SIGNAL.IDLE;
+    t.signalState = next;
+    if (t.status !== STATUS.ACTIVE) {
+      t.status = next === SIGNAL.WAITING ? STATUS.WAITING : next === SIGNAL.READY ? STATUS.READY : STATUS.PARKED;
+      t.readyAt = next === SIGNAL.READY ? Date.now() : null;
+    }
+    touch(t);
+    addTrackEvent(t, 'signal', { from: current, to: next });
+  });
+}
+
 /** Undo a ready mark — back to whatever leaving reason it had. */
 export async function unmarkReady(id) {
   return update(async (state) => {
@@ -306,6 +340,7 @@ export async function arrive(id) {
     // twice — which eventually deletes the track object out from under the
     // surviving copy when the 100-entry cap trims it.
     if (!t || t.status === STATUS.ARRIVED) return;
+    if (state.order.some((trackId) => state.tracks[trackId]?.parentId === id)) return;
     const at = Date.now();
     if (state.locomotive?.trackId === id) {
       settleTime(state, at);
@@ -358,6 +393,8 @@ export async function setStop(id, text) {
     const next = String(text || '').trim();
     if (next === t.currentStop) return;
     t.currentStop = next;
+    t.events = (t.events || []).filter((event) => event.type !== 'stop');
+    if (next) addTrackEvent(t, 'stop', { text: next, reason: t.leftBecause || null });
     touch(t);
     await logEvent(EV.STOP_EDITED, { id, len: next.length, inline: true });
   });
@@ -380,6 +417,7 @@ export async function editTrack(id, { name, destination }) {
 /** Remove without ceremony. Not "arrived" — this is "that was a mistake". */
 export async function removeTrack(id) {
   return update(async (state) => {
+    if (state.order.some((trackId) => state.tracks[trackId]?.parentId === id)) return;
     if (state.locomotive?.trackId === id) state.locomotive = { trackId: null, sinceAt: Date.now() };
     delete state.tracks[id];
     state.order = state.order.filter((x) => x !== id);
@@ -416,7 +454,7 @@ export async function setNoteResolved(id, eventId, resolved = true) {
     const t = state.tracks[id];
     const event = (t?.events || []).find((item) => item.id === eventId && item.type === 'note');
     if (!t || !event) return;
-    event.resolvedAt = resolved ? Date.now() : null;
+    if (resolved) t.events = t.events.filter((item) => item.id !== eventId);
     touch(t);
   });
 }
@@ -430,9 +468,118 @@ export async function continueOnTrack(id, eventId) {
     if (!t || !event || !event.text) return;
     const at = Date.now();
     t.currentStop = String(event.text).trim();
-    if (event.type === 'stop' && !event.passedAt) event.passedAt = at;
+    t.events = (t.events || []).filter((item) => item.type !== 'stop');
+    addTrackEvent(t, 'stop', { text: t.currentStop, reason: 'continued' }, at);
     addTrackEvent(t, 'continued', { fromEventId: event.id, fromType: event.type }, at);
     touch(t);
+  });
+}
+
+export async function reorder(ids) {
+  return update(async (state) => {
+    const known = new Set(state.order);
+    const requested = ids.filter((id, index) => known.has(id) && ids.indexOf(id) === index);
+    for (const id of state.order) if (!requested.includes(id)) requested.push(id);
+    const roots = requested.filter((id) => !state.tracks[id]?.parentId);
+    const next = [];
+    for (const rootId of roots) {
+      next.push(rootId);
+      next.push(...requested.filter((id) => state.tracks[id]?.parentId === rootId));
+    }
+    state.order = next;
+  });
+}
+
+export async function setTimebox(id, durationMinutes) {
+  return update(async (state) => {
+    const t = state.tracks[id];
+    if (!t || t.status === STATUS.ARRIVED) return;
+    const durationMs = Math.max(1, Number(durationMinutes) || 25) * 60_000;
+    t.timebox = {
+      durationMs,
+      elapsedMs: 0,
+      runningSince: state.locomotive?.trackId === id ? Date.now() : null,
+      paused: false,
+    };
+    touch(t);
+  });
+}
+
+export async function toggleTimebox(id) {
+  return update(async (state) => {
+    const t = state.tracks[id];
+    if (!t?.timebox) return;
+    if (t.timebox.runningSince) {
+      settleTimebox(t);
+      t.timebox.paused = true;
+    }
+    else if (state.locomotive?.trackId === id && (t.timebox.elapsedMs || 0) < t.timebox.durationMs) {
+      t.timebox.runningSince = Date.now();
+      t.timebox.paused = false;
+    }
+    touch(t);
+  });
+}
+
+export async function clearTimebox(id) {
+  return update(async (state) => {
+    const t = state.tracks[id];
+    if (!t) return;
+    t.timebox = null;
+    touch(t);
+  });
+}
+
+export async function createBranch(parentId, { name, destination = '' }) {
+  const branchName = String(name || '').trim();
+  if (!branchName) return;
+  return update(async (state) => {
+    const parent = state.tracks[parentId];
+    if (
+      !parent ||
+      parent.parentId ||
+      parent.status === STATUS.ARRIVED ||
+      state.locomotive?.trackId !== parentId ||
+      !state.order.includes(parentId) ||
+      state.order.length >= 10
+    )
+      return;
+    const branch = newTrack({ name: branchName, destination, parentId });
+    state.tracks[branch.id] = branch;
+    let index = state.order.indexOf(parentId) + 1;
+    while (index < state.order.length && state.tracks[state.order[index]]?.parentId === parentId) index += 1;
+    state.order.splice(index, 0, branch.id);
+    await leave_(state, {
+      stopText: state.locomotive?.trackId === parentId ? parent.currentStop || '' : '',
+      reason: LEFT.SWITCHING,
+      stopPrefilled: false,
+      toId: branch.id,
+    });
+    await board_(state, branch.id, { isNew: true });
+    addTrackEvent(branch, 'branch_created', { parentId, parentName: parent.name });
+    await logEvent(EV.TRACK_CREATED, { id: branch.id, hasDestination: !!branch.destination, ordinal: state.order.length, branch: true });
+  });
+}
+
+export async function resolveBranch(id) {
+  return update(async (state) => {
+    const branch = state.tracks[id];
+    const parent = branch?.parentId ? state.tracks[branch.parentId] : null;
+    if (!branch || !parent || branch.status === STATUS.ARRIVED) return;
+    const at = Date.now();
+    const wasActive = state.locomotive?.trackId === id;
+    if (wasActive) settleTime(state, at);
+    branch.status = STATUS.ARRIVED;
+    branch.arrivedAt = at;
+    branch.resolvedAt = at;
+    addTrackEvent(branch, 'branch_resolved', { parentId: parent.id, parentName: parent.name }, at);
+    state.order = state.order.filter((trackId) => trackId !== id);
+    if (!state.history.includes(id)) state.history.unshift(id);
+    if (wasActive) {
+      state.locomotive = { trackId: null, sinceAt: at };
+      await board_(state, parent.id, {});
+      addTrackEvent(parent, 'branch_returned', { branchId: id, branchName: branch.name }, at);
+    }
   });
 }
 

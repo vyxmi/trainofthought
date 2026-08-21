@@ -6,8 +6,7 @@
  *
  *   switchTracks  — "where did my attention just go, and where did it come from"
  *   layTrack      — "this is a new place, it did not exist a second ago"
- *   markReturn    — "something was left behind, deliberately, right there"
- *   resumeTo      — "you are back, and this is the spot"
+ *   resumeTo      — "you are back on a track you left"
  *
  * CSS handles tactile hover states; all mechanical motion here is tied to an
  * actual state change. Total budget for the signature switch stays near one
@@ -20,7 +19,6 @@ import { switchPath, locomotive, GEO } from './railway.js';
 const BLADE_MS = 170;
 const RUN_MS = 680;
 const LAY_MS = 520;
-const MARKER_MS = 300;
 
 export class Motion {
   constructor(svg) {
@@ -91,7 +89,7 @@ export class Motion {
     return this._serial(() => this._switch(fromId, toId, opts));
   }
 
-  async _switch(fromId, toId, { leaveMarker = true } = {}) {
+  async _switch(fromId, toId, _opts = {}) {
     if (!this.layout) return;
     const a = this.indexFor(fromId);
     const b = this.indexFor(toId);
@@ -111,16 +109,9 @@ export class Motion {
 
       const d = switchPath(this.layout, a, b, A.platformX, B.platformX);
 
-      // The board goes up as the engine pulls away, not after it has gone. You
-      // should see the thing being left behind while you're still leaving.
-      const departing = leaveMarker && A.kind === 'track' ? this.markReturn(a) : Promise.resolve();
-
       this.svg.classList.add('is-running');
       try {
-        await Promise.all([
-          followPath(this.loco, d, { layer: this.guides, duration: RUN_MS, ease: 'rail', autoRotate: true }),
-          departing,
-        ]);
+        await followPath(this.loco, d, { layer: this.guides, duration: RUN_MS, ease: 'rail', autoRotate: true });
       } finally {
         this.svg.classList.remove('is-running');
       }
@@ -137,25 +128,8 @@ export class Motion {
     }
   }
 
-  /**
-   * Resume is a switch that ends by clearing the board you left.
-   *
-   * The board has to be forced visible first: render() runs syncAspects before
-   * animateDiff, and syncAspects has already hidden the marker on the track
-   * being boarded. Without this the lift silently no-ops and the board just
-   * vanishes a frame early — which loses the one moment that says "you're back,
-   * and this is the spot you meant".
-   */
   resumeTo(fromId, toId, opts = {}) {
-    return this._serial(async () => {
-      const row = this.rowOf(this.indexFor(toId));
-      if (row?.marker) {
-        row.marker.classList.remove('is-hidden');
-        row.marker.style.opacity = '';
-      }
-      await this._switch(fromId, toId, opts);
-      if (row) await this.liftMarker(row);
-    });
+    return this._serial(() => this._switch(fromId, toId, opts));
   }
 
   // -------------------------------------------------------------------------
@@ -181,7 +155,6 @@ export class Motion {
     const decor = [...row.g.querySelectorAll('.turnout, .signal, .blade')];
 
     for (const el of decor) el.style.opacity = '0';
-    row.marker?.classList.add('is-hidden');
 
     await Promise.all(
       paths.filter(Boolean).map((p, i) => drawPath(p, { duration: LAY_MS + i * 40, ease: 'lay' }))
@@ -205,62 +178,6 @@ export class Motion {
     );
 
     await this._switch(fromId, trackId);
-  }
-
-  // -------------------------------------------------------------------------
-  // 3. Mark a return point
-  // -------------------------------------------------------------------------
-
-  /** The board drops into place at the platform the engine is leaving. */
-  async markReturn(index) {
-    const row = this.rowOf(index);
-    if (!row?.marker) return;
-    const m = row.marker;
-    // Set the start of the animation before revealing it. syncAspects has
-    // already un-hidden this marker at full size, so removing the class first
-    // shows one frame of the finished state and the board appears to pop.
-    m.style.opacity = '0';
-    m.classList.remove('is-hidden');
-    m.style.pointerEvents = '';
-    const { platformX, y } = row.slot;
-
-    return tween({
-      el: m,
-      from: 0,
-      to: 1,
-      duration: MARKER_MS,
-      ease: 'out',
-      apply: (v) => {
-        // Falls the last few pixels into the ground and settles.
-        m.setAttribute('transform', `translate(${platformX},${y - (1 - v) * 9}) scale(${0.7 + 0.3 * v})`);
-        m.style.opacity = String(v);
-      },
-      onComplete: () => {
-        m.setAttribute('transform', `translate(${platformX},${y})`);
-        m.style.opacity = '';
-      },
-    });
-  }
-
-  /** ...and lifts away when the engine takes its place. */
-  async liftMarker(row) {
-    if (!row?.marker || row.marker.classList.contains('is-hidden')) return;
-    const m = row.marker;
-    const { platformX, y } = row.slot;
-    await tween({
-      el: m,
-      from: 1,
-      to: 0,
-      duration: 200,
-      ease: 'inOut',
-      apply: (v) => {
-        m.setAttribute('transform', `translate(${platformX},${y - (1 - v) * 7}) scale(${0.75 + 0.25 * v})`);
-        m.style.opacity = String(v);
-      },
-    });
-    m.classList.add('is-hidden');
-    m.style.opacity = '';
-    m.setAttribute('transform', `translate(${platformX},${y})`);
   }
 
   // -------------------------------------------------------------------------
